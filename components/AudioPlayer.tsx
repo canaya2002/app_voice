@@ -1,0 +1,255 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Audio } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS } from '@/lib/constants';
+import { formatDuration } from '@/lib/audio';
+import { selectionTap } from '@/lib/haptics';
+import AnimatedPressable from '@/components/AnimatedPressable';
+
+interface AudioPlayerProps {
+  uri: string;
+  duration: number;
+}
+
+const SPEEDS = [1, 1.5, 2] as const;
+
+function generateWaveformBars(seed: string, count: number): number[] {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const bars: number[] = [];
+  for (let i = 0; i < count; i++) {
+    hash = (hash * 16807 + 12345) | 0;
+    const val = ((hash & 0x7fffffff) % 100) / 100;
+    bars.push(0.15 + val * 0.85);
+  }
+  return bars;
+}
+
+export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(duration);
+  const [speedIndex, setSpeedIndex] = useState(0);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const playAnim = useRef(new Animated.Value(1)).current;
+  const waveformBars = useRef(generateWaveformBars(uri, 40)).current;
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(playAnim, {
+            toValue: 1.08,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(playAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      playAnim.setValue(1);
+    }
+  }, [isPlaying, playAnim]);
+
+  const loadAndPlay = async () => {
+    try {
+      selectionTap();
+      if (soundRef.current) {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          if (status.isPlaying) {
+            await soundRef.current.pauseAsync();
+            setIsPlaying(false);
+          } else {
+            await soundRef.current.playAsync();
+            setIsPlaying(true);
+          }
+          return;
+        }
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true, rate: SPEEDS[speedIndex] },
+        (status) => {
+          if (status.isLoaded) {
+            setPosition(Math.floor((status.positionMillis ?? 0) / 1000));
+            if (status.durationMillis) {
+              setTotalDuration(Math.floor(status.durationMillis / 1000));
+            }
+            if (status.didJustFinish) {
+              setIsPlaying(false);
+              setPosition(0);
+            }
+          }
+        }
+      );
+
+      soundRef.current = sound;
+      setIsPlaying(true);
+    } catch (err) {
+      // Audio playback error — silently handled
+    }
+  };
+
+  const toggleSpeed = useCallback(async () => {
+    selectionTap();
+    const nextIndex = (speedIndex + 1) % SPEEDS.length;
+    setSpeedIndex(nextIndex);
+    if (soundRef.current) {
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded) {
+        await soundRef.current.setRateAsync(SPEEDS[nextIndex], true);
+      }
+    }
+  }, [speedIndex]);
+
+  const progress = totalDuration > 0 ? position / totalDuration : 0;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.waveformRow}>
+        {waveformBars.map((height, i) => {
+          const isFilled = i / waveformBars.length <= progress;
+          return (
+            <View
+              key={i}
+              style={[
+                styles.waveformBar,
+                {
+                  height: Math.max(4, height * 32),
+                  backgroundColor: isFilled ? COLORS.primary : COLORS.border,
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
+
+      <View style={styles.controls}>
+        <Animated.View style={{ transform: [{ scale: playAnim }] }}>
+          <AnimatedPressable
+            onPress={loadAndPlay}
+            scaleDown={0.92}
+            style={styles.playButton}
+            accessibilityLabel={isPlaying ? 'Pausar audio' : 'Reproducir audio'}
+          >
+            <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.playGradient}>
+              <Ionicons
+                name={isPlaying ? 'pause' : 'play'}
+                size={24}
+                color="#FFFFFF"
+              />
+            </LinearGradient>
+          </AnimatedPressable>
+        </Animated.View>
+
+        <View style={styles.timeInfo}>
+          <Text style={styles.time}>{formatDuration(position)}</Text>
+          <Text style={styles.timeSeparator}>/</Text>
+          <Text style={styles.time}>{formatDuration(totalDuration)}</Text>
+        </View>
+
+        <AnimatedPressable
+          onPress={toggleSpeed}
+          style={styles.speedButton}
+          accessibilityLabel={`Velocidad ${SPEEDS[speedIndex]}x`}
+        >
+          <Text style={styles.speedText}>{SPEEDS[speedIndex]}x</Text>
+        </AnimatedPressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 18,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  waveformRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    gap: 2,
+  },
+  waveformBar: {
+    width: 3,
+    borderRadius: 2,
+    minHeight: 4,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  playButton: {
+    width: 56, height: 56, borderRadius: 28, overflow: 'hidden',
+  },
+  playGradient: {
+    width: 56, height: 56, borderRadius: 28,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 6,
+  },
+  timeInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  time: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  timeSeparator: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+  },
+  speedButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  speedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+});
