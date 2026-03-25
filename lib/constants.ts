@@ -1,44 +1,99 @@
+import { useColorScheme } from 'react-native';
+import { useThemeStore } from '@/stores/themeStore';
 import type { OutputMode, NoteTemplate } from '@/types';
 
 export const COLORS = {
-  primary: '#6C5CE7',
-  primaryLight: '#A29BFE',
-  primaryDark: '#4834D4',
+  primary: '#0B0B0B',
+  primaryLight: '#8FD3FF',
+  primaryDark: '#000000',
 
-  background: '#FAFAFA',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceAlt: '#F0EFFF',
+  surfaceAlt: '#F5F7FA',
 
-  textPrimary: '#1A1A2E',
-  textSecondary: '#6B7280',
-  textMuted: '#9CA3AF',
+  textPrimary: '#0B0B0B',
+  textSecondary: '#8A8F98',
+  textMuted: '#B8BCC4',
 
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  success: '#34C759',
+  warning: '#FF9500',
+  error: '#FF3B30',
+  info: '#8FD3FF',
 
-  border: '#E5E7EB',
-  borderLight: '#F3F4F6',
+  border: '#EBEDF0',
+  borderLight: '#F5F7FA',
 
-  recording: '#EF4444',
-  recordingBg: '#FEE2E2',
+  recording: '#FF3B30',
+  recordingBg: '#FFF0EF',
 };
+
+export const DARK_COLORS: typeof COLORS = {
+  primary: '#FFFFFF',
+  primaryLight: '#8FD3FF',
+  primaryDark: '#FAFAFA',
+
+  background: '#0B0B0B',
+  surface: '#1A1A1A',
+  surfaceAlt: '#222222',
+
+  textPrimary: '#F5F5F5',
+  textSecondary: '#9A9FA8',
+  textMuted: '#5A5F68',
+
+  success: '#34C759',
+  warning: '#FF9500',
+  error: '#FF3B30',
+  info: '#8FD3FF',
+
+  border: '#2A2A2A',
+  borderLight: '#222222',
+
+  recording: '#FF3B30',
+  recordingBg: '#2A1515',
+};
+
+export type ThemeColors = typeof COLORS;
+
+export function useThemeColors(): ThemeColors {
+  const { preference } = useThemeStore();
+  const systemScheme = useColorScheme();
+  const resolved = preference === 'system' ? (systemScheme ?? 'light') : preference;
+  return resolved === 'dark' ? DARK_COLORS : COLORS;
+}
+
+export function useIsDark(): boolean {
+  const { preference } = useThemeStore();
+  const systemScheme = useColorScheme();
+  const resolved = preference === 'system' ? (systemScheme ?? 'light') : preference;
+  return resolved === 'dark';
+}
 
 export const LIMITS = {
   FREE_DAILY_NOTES: 3,
-  MAX_AUDIO_DURATION: 600,
+  PREMIUM_DAILY_NOTES: Infinity,
+  FREE_MAX_AUDIO_DURATION: 600,       // 10 min
+  PREMIUM_MAX_AUDIO_DURATION: 1800,   // 30 min
+  MAX_AUDIO_DURATION: 600,            // default (overridden by plan)
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   MAX_TRANSCRIPT_CHARS: 15000,
 };
 
+/** Modes available on each tier. */
+export const FREE_MODES: OutputMode[] = ['summary', 'tasks', 'clean_text', 'ideas'];
+export const PREMIUM_MODES: OutputMode[] = ['action_plan', 'executive_report', 'ready_message', 'study'];
+export const ALL_MODES: OutputMode[] = [...FREE_MODES, ...PREMIUM_MODES];
+
+export function isModeFreeTier(mode: OutputMode): boolean {
+  return FREE_MODES.includes(mode);
+}
+
 export const SPEAKER_COLORS = [
-  { bg: '#F0EFFF', text: '#6C5CE7', name: 'purple' },
-  { bg: '#E1F5EE', text: '#0F6E56', name: 'teal' },
-  { bg: '#FAECE7', text: '#D85A30', name: 'coral' },
-  { bg: '#FAEEDA', text: '#BA7517', name: 'amber' },
-  { bg: '#E6F1FB', text: '#185FA5', name: 'blue' },
-  { bg: '#FBEAF0', text: '#993556', name: 'pink' },
+  { bg: '#F5F7FA', text: '#0B0B0B', name: 'default' },
+  { bg: '#EAF7FF', text: '#2B7CB5', name: 'blue' },
+  { bg: '#F0FFF4', text: '#1A7F4B', name: 'green' },
+  { bg: '#FFF8F0', text: '#B8600A', name: 'amber' },
+  { bg: '#F5F7FA', text: '#5A5F68', name: 'gray' },
+  { bg: '#EAF7FF', text: '#4A90B8', name: 'sky' },
 ];
 
 export interface ModeConfig {
@@ -50,14 +105,14 @@ export interface ModeConfig {
 }
 
 export const MODE_CONFIGS: ModeConfig[] = [
-  { id: 'summary', label: 'Resumen', icon: 'document-text-outline', description: 'Dime de qué trató', excelExport: false },
+  { id: 'summary', label: 'Resumen', icon: 'document-text-outline', description: 'Dime de qué trató', excelExport: true },
   { id: 'tasks', label: 'Tareas', icon: 'checkbox-outline', description: 'Sácame todo lo pendiente', excelExport: true },
   { id: 'action_plan', label: 'Plan de acción', icon: 'map-outline', description: 'Aterrízamelo en pasos', excelExport: true },
-  { id: 'clean_text', label: 'Texto limpio', icon: 'create-outline', description: 'Déjamelo presentable', excelExport: false },
+  { id: 'clean_text', label: 'Texto limpio', icon: 'create-outline', description: 'Déjamelo presentable', excelExport: true },
   { id: 'executive_report', label: 'Reporte ejecutivo', icon: 'briefcase-outline', description: 'Hazme un reporte serio', excelExport: true },
-  { id: 'ready_message', label: 'Mensaje listo', icon: 'send-outline', description: 'Dame algo para enviar', excelExport: false },
-  { id: 'study', label: 'Estudio', icon: 'school-outline', description: 'Conviértelo en material', excelExport: false },
-  { id: 'ideas', label: 'Ideas', icon: 'bulb-outline', description: 'Ordena esta idea', excelExport: false },
+  { id: 'ready_message', label: 'Mensaje listo', icon: 'send-outline', description: 'Dame algo para enviar', excelExport: true },
+  { id: 'study', label: 'Estudio', icon: 'school-outline', description: 'Conviértelo en material', excelExport: true },
+  { id: 'ideas', label: 'Ideas', icon: 'bulb-outline', description: 'Ordena esta idea', excelExport: true },
 ];
 
 export interface TemplateConfig {

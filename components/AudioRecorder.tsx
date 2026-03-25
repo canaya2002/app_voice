@@ -31,7 +31,7 @@ import {
   formatDuration,
 } from '@/lib/audio';
 import { useRecordingStore } from '@/stores/recordingStore';
-import { lightTap, selectionTap, mediumTap } from '@/lib/haptics';
+import { lightTap, selectionTap, mediumTap, errorTap } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
 const NUM_BARS = 40;
@@ -107,12 +107,19 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
     if (uri) onRecordingComplete(uri, finalDuration);
   }, [onRecordingComplete, reset]);
 
+  const WARNING_THRESHOLD = LIMITS.MAX_AUDIO_DURATION * 0.8; // 8 min
+  const warnedRef = useRef(false);
+  const isNearLimit = isRecording && duration >= WARNING_THRESHOLD;
+
   useEffect(() => {
     if (duration >= LIMITS.MAX_AUDIO_DURATION && isRecording) {
       handleStop();
       Alert.alert('Límite alcanzado', 'La grabación máxima es de 10 minutos.');
+    } else if (duration >= WARNING_THRESHOLD && isRecording && !warnedRef.current) {
+      warnedRef.current = true;
+      errorTap();
     }
-  }, [duration, isRecording, handleStop]);
+  }, [duration, isRecording, handleStop, WARNING_THRESHOLD]);
 
   const handleStart = async () => {
     const hasPermission = await requestAudioPermissions();
@@ -202,7 +209,7 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
       </Animated.View>
 
       {/* Timer */}
-      <Text style={styles.timer}>{formatDuration(duration)}</Text>
+      <Text style={[styles.timer, isNearLimit && styles.timerWarning]}>{formatDuration(duration)}</Text>
 
       {/* Status */}
       {isPaused ? (
@@ -227,7 +234,11 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
         </AnimatedPressable>
       </View>
 
-      <Text style={styles.limitHint}>Máx. {Math.floor(LIMITS.MAX_AUDIO_DURATION / 60)} min</Text>
+      <Text style={[styles.limitHint, isNearLimit && styles.limitWarning]}>
+        {isNearLimit
+          ? `${formatDuration(LIMITS.MAX_AUDIO_DURATION - duration)} restante`
+          : `Máx. ${Math.floor(LIMITS.MAX_AUDIO_DURATION / 60)} min`}
+      </Text>
     </Animated.View>
   );
 }
@@ -294,4 +305,6 @@ const styles = StyleSheet.create({
   stopIcon: { width: 24, height: 24, borderRadius: 6, backgroundColor: '#FFFFFF' },
 
   limitHint: { fontSize: 12, color: 'rgba(255,255,255,0.25)' },
+  timerWarning: { color: COLORS.warning },
+  limitWarning: { color: COLORS.warning, fontWeight: '600' },
 });

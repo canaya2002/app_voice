@@ -13,8 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { COLORS } from '@/lib/constants';
-import { shadows } from '@/lib/styles';
+import { COLORS, useThemeColors } from '@/lib/constants';
 import { cardEntry } from '@/lib/animations';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import NoteCard from '@/components/NoteCard';
@@ -40,6 +39,33 @@ const FILTERS: { id: FilterOption; label: string; icon: keyof typeof Ionicons.gl
   { id: 'conversations', label: 'Conversaciones', icon: 'chatbubbles-outline' },
 ];
 
+type TimeFilter = 'any' | 'today' | 'week' | 'month';
+
+const TIME_FILTERS: { id: TimeFilter; label: string }[] = [
+  { id: 'any', label: 'Siempre' },
+  { id: 'today', label: 'Hoy' },
+  { id: 'week', label: 'Esta semana' },
+  { id: 'month', label: 'Este mes' },
+];
+
+function matchesTimeFilter(dateStr: string, timeFilter: TimeFilter): boolean {
+  if (timeFilter === 'any') return true;
+  const now = new Date();
+  const date = new Date(dateStr);
+  if (timeFilter === 'today') {
+    return date.toDateString() === now.toDateString();
+  }
+  if (timeFilter === 'week') {
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return date >= weekAgo;
+  }
+  if (timeFilter === 'month') {
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
@@ -49,6 +75,7 @@ export default function HistoryScreen() {
   const { user } = useAuthStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterOption>('all');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('any');
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
 
@@ -67,6 +94,8 @@ export default function HistoryScreen() {
   }, [deleteNote]);
 
   const filteredNotes = notes.filter((note) => {
+    // Time filter
+    if (!matchesTimeFilter(note.created_at, timeFilter)) return false;
     // Text search
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -93,8 +122,10 @@ export default function HistoryScreen() {
     <NoteCard note={item} index={index} onDelete={handleDelete} />
   );
 
+  const colors = useThemeColors();
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <Animated.View entering={FadeInDown.delay(50).duration(500)} style={styles.header}>
         <Text style={styles.title}>Historial</Text>
@@ -139,10 +170,34 @@ export default function HistoryScreen() {
                 <Ionicons
                   name={f.icon}
                   size={14}
-                  color={active ? '#FFFFFF' : COLORS.textMuted}
+                  color={active ? '#FFFFFF' : COLORS.textSecondary}
                 />
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>
                   {f.label}
+                </Text>
+              </AnimatedPressable>
+            );
+          })}
+        </ScrollView>
+      </Animated.View>
+
+      {/* Time filter chips */}
+      <Animated.View entering={FadeInDown.delay(180).duration(500)}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.timeFiltersContainer}
+        >
+          {TIME_FILTERS.map((tf) => {
+            const active = timeFilter === tf.id;
+            return (
+              <AnimatedPressable
+                key={tf.id}
+                onPress={() => { selectionTap(); setTimeFilter(tf.id); }}
+                style={[styles.timeChip, active && styles.timeChipActive]}
+              >
+                <Text style={[styles.timeChipText, active && styles.timeChipTextActive]}>
+                  {tf.label}
                 </Text>
               </AnimatedPressable>
             );
@@ -157,7 +212,7 @@ export default function HistoryScreen() {
         <EmptyState
           icon={search ? 'search-outline' : 'mic-outline'}
           title={search ? 'Sin resultados' : 'Tu historia empieza aquí'}
-          message={search ? 'No se encontraron notas con ese texto.' : 'Graba tu primera nota de voz y deja que la magia ocurra.'}
+          message={search ? 'No se encontraron notas con ese texto.' : 'Graba tu primer audio y transforma tu voz en claridad.'}
           actionLabel={search ? undefined : 'Grabar ahora'}
           onAction={search ? undefined : () => router.push('/(tabs)')}
         />
@@ -171,7 +226,7 @@ export default function HistoryScreen() {
           maxToRenderPerBatch={10}
           windowSize={5}
           initialNumToRender={8}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primaryLight} />}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -202,7 +257,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   count: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textMuted,
     fontWeight: '500',
   },
@@ -215,12 +270,13 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    height: 50,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 12,
+    height: 48,
     paddingHorizontal: 16,
     gap: 10,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   searchInput: {
     flex: 1,
@@ -232,38 +288,58 @@ const styles = StyleSheet.create({
   // -- Filter chips -----------------------------------------------------------
   filtersContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 14,
+    paddingBottom: 8,
     gap: 8,
+  },
+  timeFiltersContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    gap: 6,
+  },
+  timeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  timeChipActive: {
+    backgroundColor: COLORS.info + '20',
+  },
+  timeChipText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
+  timeChipTextActive: {
+    color: COLORS.primaryLight,
+    fontWeight: '600',
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   chipActive: {
     backgroundColor: COLORS.primary,
   },
   chipInactive: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceAlt,
   },
   chipText: {
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: COLORS.textSecondary,
     fontWeight: '500',
   },
   chipTextActive: {
-    color: '#FFFFFF',
+    color: COLORS.background,
     fontWeight: '600',
   },
 
   // -- List -------------------------------------------------------------------
   list: {
     paddingHorizontal: 24,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
 });

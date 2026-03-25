@@ -8,6 +8,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -17,7 +19,8 @@ import Animated, {
   FadeInDown,
   FadeIn,
 } from 'react-native-reanimated';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/lib/constants';
@@ -52,7 +55,7 @@ export default function RegisterScreen() {
     transform: [{ translateX: shakeX.value }],
   }));
 
-  /* ── handlers (unchanged) ───────────────────────────── */
+  /* ── handlers ───────────────────────────────────────── */
   const handleRegister = async () => {
     const emailCheck = validateEmail(email);
     if (!emailCheck.valid) {
@@ -73,7 +76,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={styles.bg}>
+    <SafeAreaView style={styles.bg}>
       {/* Floating orbs */}
       <FloatingOrb size={350} color={COLORS.primaryLight} top={-60} right={-100} />
       <FloatingOrb size={250} color={COLORS.primary} top={500} left={-80} delay={400} />
@@ -82,13 +85,17 @@ export default function RegisterScreen() {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.inner}>
+        <ScrollView
+          contentContainerStyle={styles.inner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {/* Title */}
           <Animated.Text
             entering={FadeInDown.springify().damping(14)}
             style={styles.title}
           >
-            VoiceNotes
+            Sythio
           </Animated.Text>
 
           <Animated.Text
@@ -190,6 +197,11 @@ export default function RegisterScreen() {
             />
           </View>
 
+          {/* Terms */}
+          <Text style={styles.termsText}>
+            Al crear tu cuenta, aceptas los Términos de Servicio y la Política de Privacidad de Sythio.
+          </Text>
+
           {/* Register button */}
           <AnimatedPressable
             onPress={handleRegister}
@@ -214,18 +226,20 @@ export default function RegisterScreen() {
 
           {/* Link */}
           <Animated.View entering={FadeIn.delay(800)}>
-            <Link href="/login" asChild>
-              <AnimatedPressable style={styles.linkButton}>
-                <Text style={styles.linkText}>
-                  ¿Ya tienes cuenta?{' '}
-                  <Text style={styles.linkBold}>Inicia sesión</Text>
-                </Text>
-              </AnimatedPressable>
-            </Link>
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => router.push('/(auth)/login')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.linkText}>
+                ¿Ya tienes cuenta?{' '}
+                <Text style={styles.linkBold}>Inicia sesión</Text>
+              </Text>
+            </TouchableOpacity>
           </Animated.View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -238,16 +252,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 32,
+    paddingVertical: 24,
   },
   title: {
     fontSize: 36,
     fontWeight: '800',
     color: COLORS.primary,
     textAlign: 'center',
-    marginTop: 60,
   },
   subtitle: {
     fontSize: 16,
@@ -323,5 +337,13 @@ const styles = StyleSheet.create({
   linkBold: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  termsText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginBottom: 8,
+    paddingHorizontal: 8,
   },
 });

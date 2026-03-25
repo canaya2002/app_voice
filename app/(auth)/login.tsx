@@ -8,6 +8,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -17,13 +19,16 @@ import Animated, {
   FadeInDown,
   FadeIn,
 } from 'react-native-reanimated';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/lib/constants';
 import { shadows } from '@/lib/styles';
 import { validateEmail } from '@/lib/validation';
 import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/lib/supabase';
+import { showToast } from '@/components/Toast';
 import FloatingOrb from '@/components/FloatingOrb';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
@@ -51,7 +56,7 @@ export default function LoginScreen() {
     transform: [{ translateX: shakeX.value }],
   }));
 
-  /* ── handlers (unchanged) ───────────────────────────── */
+  /* ── handlers ───────────────────────────────────────── */
   const handleLogin = async () => {
     const emailCheck = validateEmail(email);
     if (!emailCheck.valid) {
@@ -67,7 +72,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.bg}>
+    <SafeAreaView style={styles.bg}>
       {/* Floating orbs */}
       <FloatingOrb size={350} color={COLORS.primaryLight} top={-60} right={-100} />
       <FloatingOrb size={250} color={COLORS.primary} top={500} left={-80} delay={400} />
@@ -76,13 +81,17 @@ export default function LoginScreen() {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.inner}>
+        <ScrollView
+          contentContainerStyle={styles.inner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {/* Title */}
           <Animated.Text
             entering={FadeInDown.springify().damping(14)}
             style={styles.title}
           >
-            VoiceNotes
+            Sythio
           </Animated.Text>
 
           <Animated.Text
@@ -176,20 +185,42 @@ export default function LoginScreen() {
             </LinearGradient>
           </AnimatedPressable>
 
+          {/* Forgot password */}
+          <TouchableOpacity
+            style={styles.forgotButton}
+            onPress={async () => {
+              if (!email.trim() || !validateEmail(email)) {
+                Alert.alert('Recuperar contraseña', 'Ingresa tu email arriba primero.');
+                return;
+              }
+              const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+              if (resetError) {
+                showToast('No se pudo enviar el enlace', 'error');
+              } else {
+                showToast('Enlace de recuperación enviado a tu email', 'success');
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+
           {/* Link */}
           <Animated.View entering={FadeIn.delay(800)}>
-            <Link href="/register" asChild>
-              <AnimatedPressable style={styles.linkButton}>
-                <Text style={styles.linkText}>
-                  ¿No tienes cuenta?{' '}
-                  <Text style={styles.linkBold}>Regístrate</Text>
-                </Text>
-              </AnimatedPressable>
-            </Link>
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => router.push('/(auth)/register')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.linkText}>
+                ¿No tienes cuenta?{' '}
+                <Text style={styles.linkBold}>Regístrate</Text>
+              </Text>
+            </TouchableOpacity>
           </Animated.View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -202,16 +233,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 32,
+    paddingVertical: 24,
   },
   title: {
     fontSize: 36,
     fontWeight: '800',
     color: COLORS.primary,
     textAlign: 'center',
-    marginTop: 60,
   },
   subtitle: {
     fontSize: 16,
@@ -276,8 +307,18 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
+  forgotButton: {
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
   linkButton: {
-    marginTop: 20,
+    marginTop: 12,
     alignItems: 'center',
   },
   linkText: {

@@ -138,6 +138,14 @@ export default function LoadingProcessor({ status, errorMessage, onRetry, onComp
     if (status === 'error') errorTap();
   }, [status, onComplete]);
 
+  // Timeout: if stuck for 2 minutes, show soft timeout hint
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    if (status === 'done' || status === 'error') { setTimedOut(false); return; }
+    const timer = setTimeout(() => setTimedOut(true), 120_000);
+    return () => clearTimeout(timer);
+  }, [status]);
+
   const rippleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: rippleScale.value }],
     opacity: rippleOpacity.value,
@@ -225,6 +233,13 @@ export default function LoadingProcessor({ status, errorMessage, onRetry, onComp
         {status === 'error' && onRetry ? (
           <Text style={styles.retryBtn} onPress={onRetry}>Reintentar</Text>
         ) : null}
+
+        {timedOut && status !== 'done' && status !== 'error' && onRetry ? (
+          <Animated.View entering={FadeIn}>
+            <Text style={styles.timeoutText}>Está tardando más de lo normal.</Text>
+            <Text style={styles.retryBtn} onPress={onRetry}>Reintentar</Text>
+          </Animated.View>
+        ) : null}
       </Animated.View>
     </View>
   );
@@ -255,6 +270,9 @@ const styles = StyleSheet.create({
     fontSize: 16, fontWeight: '600', color: COLORS.primary, marginTop: 16,
     paddingVertical: 12, paddingHorizontal: 28, borderRadius: 14,
     backgroundColor: COLORS.surfaceAlt, overflow: 'hidden', textAlign: 'center',
+  },
+  timeoutText: {
+    fontSize: 13, color: COLORS.textMuted, textAlign: 'center', marginTop: 16,
   },
   sparkle: { position: 'absolute', width: 6, height: 6, borderRadius: 3 },
 });

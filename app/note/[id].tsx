@@ -15,7 +15,7 @@ import RNAnimated, {
   FadeInUp,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, getModeConfig } from '@/lib/constants';
+import { COLORS, getModeConfig, useThemeColors } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 import ModeResultView from '@/components/ModeResultView';
 import ModeSelector from '@/components/ModeSelector';
@@ -25,9 +25,12 @@ import ExportButton from '@/components/ExportButton';
 import LoadingProcessor from '@/components/LoadingProcessor';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import { useNotesStore } from '@/stores/notesStore';
+import { useAuthStore } from '@/stores/authStore';
 import { getSignedAudioUrl } from '@/lib/transcription';
 import { lightTap } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
+import { track, trackModeView, trackModeGenerated } from '@/lib/analytics';
+import Paywall from '@/components/Paywall';
 import type { OutputMode, SpeakerInfo, ModeResult } from '@/types';
 
 export default function NoteDetailScreen() {
@@ -41,6 +44,9 @@ export default function NoteDetailScreen() {
   const [selectedMode, setSelectedMode] = useState<OutputMode | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const { user } = useAuthStore();
+  const colors = useThemeColors();
 
   useEffect(() => {
     if (id) {
@@ -66,18 +72,27 @@ export default function NoteDetailScreen() {
 
   const activeResult: ModeResult | undefined = modeResults.find((r) => r.mode === selectedMode);
 
-  const handleSelectMode = useCallback((mode: OutputMode) => setSelectedMode(mode), []);
+  const handleSelectMode = useCallback((mode: OutputMode) => {
+    setSelectedMode(mode);
+    if (id) trackModeView(mode, id);
+  }, [id]);
   const handleGenerateMode = useCallback(async (mode: OutputMode) => {
     if (!id) return;
     setSelectedMode(mode);
     const result = await convertMode(id, mode);
-    if (result) showToast(`${getModeConfig(mode).label} generado`, 'success');
+    if (result) {
+      trackModeGenerated(mode, id);
+      showToast(`${getModeConfig(mode).label} generado`, 'success');
+    } else {
+      showToast('No se pudo generar. Intenta de nuevo.', 'error');
+    }
   }, [id, convertMode]);
 
   const handleSaveSpeakers = useCallback(async (updated: SpeakerInfo[]) => {
     if (!id) return;
     await updateSpeakers(id, updated);
     setShowRenameModal(false);
+    track('speaker_renamed', { note_id: id });
     showToast('Hablantes actualizados', 'success');
   }, [id, updateSpeakers]);
 
@@ -115,7 +130,7 @@ export default function NoteDetailScreen() {
   } : undefined);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header gradient */}
       <RNAnimated.View entering={FadeIn.duration(400)}>
         <LinearGradient
@@ -180,6 +195,11 @@ export default function NoteDetailScreen() {
             generatedModes={generatedModes}
             onSelectMode={handleSelectMode}
             onGenerateMode={handleGenerateMode}
+            onPremiumRequired={(mode) => {
+              track('premium_cta_viewed', { source: 'mode_gate', mode });
+              setShowPaywall(true);
+            }}
+            userPlan={user?.plan ?? 'free'}
             loading={converting}
             loadingMode={convertingMode}
           />
@@ -187,17 +207,30 @@ export default function NoteDetailScreen() {
           {converting && convertingMode === selectedMode ? (
             <View style={styles.convertWrap}>
               <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={styles.convertText}>Generando {getModeConfig(selectedMode ?? 'summary').label}...</Text>
+              <Text style={styles.convertTitle}>Generando {getModeConfig(selectedMode ?? 'summary').label}</Text>
+              <Text style={styles.convertText}>Transformando tu audio...</Text>
             </View>
           ) : displayResult ? (
-            <ModeResultView
-              mode={selectedMode ?? currentNote.primary_mode}
-              result={displayResult}
-              noteId={currentNote.id}
-            />
+            <>
+              <ModeResultView
+                mode={selectedMode ?? currentNote.primary_mode}
+                result={displayResult}
+                noteId={currentNote.id}
+              />
+              {/* Reconversion CTA — "One audio, multiple outcomes" */}
+              {generatedModes.length < 8 && (
+                <View style={styles.reconvertCta}>
+                  <Ionicons name="sparkles-outline" size={16} color={COLORS.primaryLight} />
+                  <Text style={styles.reconvertText}>Un audio, múltiples resultados.</Text>
+                  <Text style={styles.reconvertHint}>Prueba otro formato arriba.</Text>
+                </View>
+              )}
+            </>
           ) : (
             <View style={styles.convertWrap}>
-              <Text style={styles.convertText}>Toca un modo para generarlo</Text>
+              <Ionicons name="layers-outline" size={32} color={COLORS.borderLight} />
+              <Text style={styles.convertTitle}>Elige un formato</Text>
+              <Text style={styles.convertText}>Toca cualquier modo arriba para transformar este audio.</Text>
             </View>
           )}
 
@@ -234,7 +267,13 @@ export default function NoteDetailScreen() {
         </ScrollView>
       )}
 
-      {isDone && <ExportButton note={currentNote} />}
+      {isDone && (
+        <ExportButton
+          note={currentNote}
+          activeMode={selectedMode ?? currentNote.primary_mode}
+          activeModeResult={displayResult as Record<string, unknown> | undefined}
+        />
+      )}
 
       <SpeakerRenameModal
         visible={showRenameModal}
@@ -242,6 +281,7 @@ export default function NoteDetailScreen() {
         onSave={handleSaveSpeakers}
         onClose={() => setShowRenameModal(false)}
       />
+      <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="mode_gate" />
     </SafeAreaView>
   );
 }
@@ -269,8 +309,9 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
   playerWrap: { paddingHorizontal: 20, marginTop: -16, zIndex: 1, marginBottom: 8 },
   scroll: { flex: 1 },
-  convertWrap: { alignItems: 'center', paddingVertical: 48, gap: 16 },
-  convertText: { fontSize: 15, color: COLORS.textMuted },
+  convertWrap: { alignItems: 'center', paddingVertical: 48, gap: 10 },
+  convertTitle: { fontSize: 17, fontWeight: '600', color: COLORS.textSecondary },
+  convertText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 40 },
   transcriptToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 18, marginHorizontal: 24,
@@ -286,4 +327,11 @@ const styles = StyleSheet.create({
   errorTitle: { fontSize: 20, fontWeight: '700', color: COLORS.error, marginTop: 16 },
   errorMsg: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 22 },
   backLink: { fontSize: 16, color: COLORS.primary, fontWeight: '600', marginTop: 16 },
+  reconvertCta: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 24, marginHorizontal: 24, paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: COLORS.surfaceAlt, borderRadius: 14, borderWidth: 1, borderColor: COLORS.borderLight,
+  },
+  reconvertText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  reconvertHint: { fontSize: 13, color: COLORS.textMuted },
 });

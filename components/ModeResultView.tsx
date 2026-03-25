@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  TextInput,
+  Alert,
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -151,20 +153,49 @@ function TaskCheckbox({
   task,
   checked,
   onToggle,
+  editedText,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   task: TaskItem;
   checked: boolean;
   onToggle: () => void;
+  editedText?: string;
+  onEdit: (text: string) => void;
+  onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(editedText ?? task.text);
+  const displayText = editedText ?? task.text;
+
+  const handleSaveEdit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== task.text) {
+      onEdit(trimmed);
+    }
+    setEditing(false);
+  };
+
+  const handleDelete = () => {
+    Alert.alert('Eliminar tarea', '¿Quieres eliminar esta tarea?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: onDelete },
+    ]);
+  };
+
   return (
-    <TouchableOpacity
-      style={styles.taskRow}
-      activeOpacity={0.7}
-      onPress={onToggle}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-    >
-      <View style={styles.checkboxOuter}>
+    <View style={styles.taskRow}>
+      <TouchableOpacity
+        style={styles.checkboxOuter}
+        activeOpacity={0.7}
+        onPress={onToggle}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+      >
         <View
           style={[
             styles.checkboxInner,
@@ -176,12 +207,31 @@ function TaskCheckbox({
         >
           {checked && <Ionicons name="checkmark" size={14} color="#FFF" />}
         </View>
-      </View>
+      </TouchableOpacity>
 
       <View style={styles.taskContent}>
-        <Text style={[styles.taskText, checked && styles.taskTextChecked]}>
-          {task.text}
-        </Text>
+        {editing ? (
+          <TextInput
+            style={styles.taskEditInput}
+            value={draft}
+            onChangeText={setDraft}
+            onBlur={handleSaveEdit}
+            onSubmitEditing={handleSaveEdit}
+            autoFocus
+            multiline
+            returnKeyType="done"
+            blurOnSubmit
+          />
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => { setDraft(displayText); setEditing(true); }}
+          >
+            <Text style={[styles.taskText, checked && styles.taskTextChecked]}>
+              {displayText}
+            </Text>
+          </TouchableOpacity>
+        )}
         <View style={styles.taskMeta}>
           {task.responsible ? (
             <View style={styles.responsibleChip}>
@@ -206,7 +256,27 @@ function TaskCheckbox({
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+
+      <View style={styles.taskActions}>
+        {onMoveUp && (
+          <TouchableOpacity onPress={() => { selectionTap(); onMoveUp(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
+            <Ionicons name="chevron-up" size={14} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+        {onMoveDown && (
+          <TouchableOpacity onPress={() => { selectionTap(); onMoveDown(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
+            <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.taskDeleteBtn}
+          onPress={handleDelete}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="close" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -240,6 +310,90 @@ function QuestionRow({ question, hint }: { question: string; hint: string }) {
           <Text style={styles.hintText}>{hint}</Text>
         </View>
       ) : null}
+    </TouchableOpacity>
+  );
+}
+
+/** Builds a plain-text version of any mode result for clipboard. */
+function buildModeTextForCopy(mode: OutputMode, result: Record<string, unknown>): string {
+  const lines: string[] = [];
+  switch (mode) {
+    case 'summary': {
+      lines.push(asString(result.summary));
+      const kp = asStringArray(result.key_points);
+      if (kp.length) { lines.push('', 'Puntos clave:', ...kp.map((p) => `• ${p}`)); }
+      const topics = asStringArray(result.topics);
+      if (topics.length) { lines.push('', `Temas: ${topics.join(', ')}`); }
+      break;
+    }
+    case 'tasks': {
+      const tasks = asRecordArray(result.tasks);
+      tasks.forEach((t, i) => {
+        const text = asString(t.text) || asString(t.task) || `Tarea ${i + 1}`;
+        const resp = asString(t.responsible);
+        lines.push(`☐ ${text}${resp ? ` → ${resp}` : ''}`);
+      });
+      break;
+    }
+    case 'action_plan': {
+      if (asString(result.objective)) lines.push(`Objetivo: ${asString(result.objective)}`, '');
+      asRecordArray(result.steps).forEach((s, i) => {
+        lines.push(`${i + 1}. ${asString(s.title) || asString(s.step) || asString(s.action)}`);
+        if (asString(s.description)) lines.push(`   ${asString(s.description)}`);
+      });
+      if (asString(result.next_immediate_step)) lines.push('', `Siguiente paso: ${asString(result.next_immediate_step)}`);
+      break;
+    }
+    case 'executive_report': {
+      if (asString(result.context)) lines.push(`Contexto: ${asString(result.context)}`, '');
+      if (asString(result.executive_summary)) lines.push(asString(result.executive_summary), '');
+      const decisions = asRecordArray(result.decisions);
+      if (decisions.length) { lines.push('Decisiones:', ...decisions.map((d) => `• ${asString(d.decision) || asString(d.text)}`)); }
+      const pending = asStringArray(result.pending_items);
+      if (pending.length) { lines.push('', 'Pendientes:', ...pending.map((p) => `• ${p}`)); }
+      const next = asStringArray(result.next_steps);
+      if (next.length) { lines.push('', 'Próximos pasos:', ...next.map((n) => `• ${n}`)); }
+      break;
+    }
+    case 'study': {
+      if (asString(result.summary)) lines.push(asString(result.summary), '');
+      asRecordArray(result.key_concepts).forEach((c) => {
+        lines.push(`• ${asString(c.concept) || asString(c.term)}: ${asString(c.explanation) || asString(c.definition)}`);
+      });
+      const review = asStringArray(result.review_points);
+      if (review.length) { lines.push('', 'Puntos de repaso:', ...review.map((r) => `• ${r}`)); }
+      break;
+    }
+    case 'ideas': {
+      if (asString(result.core_idea)) lines.push(asString(result.core_idea), '');
+      asRecordArray(result.opportunities).forEach((o) => {
+        lines.push(`• ${asString(o.opportunity) || asString(o.text)}`);
+      });
+      const questions = asStringArray(result.open_questions);
+      if (questions.length) { lines.push('', 'Preguntas abiertas:', ...questions.map((q) => `• ${q}`)); }
+      if (asString(result.suggested_next_step)) lines.push('', `Siguiente paso: ${asString(result.suggested_next_step)}`);
+      break;
+    }
+    default:
+      lines.push(JSON.stringify(result, null, 2));
+  }
+  return lines.join('\n').trim();
+}
+
+/** Footer copy button for mode results. */
+function CopyResultFooter({ mode, result }: { mode: OutputMode; result: Record<string, unknown> }) {
+  return (
+    <TouchableOpacity
+      style={styles.copyResultFooter}
+      activeOpacity={0.7}
+      onPress={() => {
+        selectionTap();
+        copyText(buildModeTextForCopy(mode, result), 'Resultado copiado');
+      }}
+      accessibilityLabel="Copiar resultado"
+    >
+      <Ionicons name="copy-outline" size={16} color={COLORS.primary} />
+      <Text style={styles.copyResultFooterText}>Copiar resultado</Text>
     </TouchableOpacity>
   );
 }
@@ -297,6 +451,8 @@ function SummaryView({ result }: { result: Record<string, unknown> }) {
           <BulletList items={speakerHighlights} />
         </>
       )}
+
+      <CopyResultFooter mode="summary" result={result} />
     </View>
   );
 }
@@ -304,61 +460,120 @@ function SummaryView({ result }: { result: Record<string, unknown> }) {
 function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId: string }) {
   const tasks = parseTaskItems(result.tasks);
   const [checkedSet, setCheckedSet] = useState<Set<number>>(new Set());
+  const [deletedSet, setDeletedSet] = useState<Set<number>>(new Set());
+  const [editedTexts, setEditedTexts] = useState<Record<number, string>>({});
   const [loaded, setLoaded] = useState(false);
+
+  const [customOrder, setCustomOrder] = useState<number[] | null>(null);
+
+  const storageKey = tasksStorageKey(noteId);
+  const editsKey = `task_edits_${noteId}`;
+  const deletedKey = `task_deleted_${noteId}`;
+  const orderKey = `task_order_${noteId}`;
 
   // Load persisted state
   useEffect(() => {
     let cancelled = false;
-    AsyncStorage.getItem(tasksStorageKey(noteId))
-      .then((raw) => {
-        if (cancelled) return;
-        if (raw != null) {
-          try {
-            const arr: number[] = JSON.parse(raw);
-            setCheckedSet(new Set(arr));
-          } catch {
-            // corrupted — ignore
-          }
-        }
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [noteId]);
+    Promise.all([
+      AsyncStorage.getItem(storageKey),
+      AsyncStorage.getItem(editsKey),
+      AsyncStorage.getItem(deletedKey),
+      AsyncStorage.getItem(orderKey),
+    ]).then(([rawChecked, rawEdits, rawDeleted, rawOrder]) => {
+      if (cancelled) return;
+      if (rawChecked != null) {
+        try { setCheckedSet(new Set(JSON.parse(rawChecked))); } catch {}
+      }
+      if (rawEdits != null) {
+        try { setEditedTexts(JSON.parse(rawEdits)); } catch {}
+      }
+      if (rawDeleted != null) {
+        try { setDeletedSet(new Set(JSON.parse(rawDeleted))); } catch {}
+      }
+      if (rawOrder != null) {
+        try { setCustomOrder(JSON.parse(rawOrder)); } catch {}
+      }
+      setLoaded(true);
+    }).catch(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, [noteId, storageKey, editsKey, deletedKey]);
 
   // Persist on change
   useEffect(() => {
     if (!loaded) return;
-    AsyncStorage.setItem(
-      tasksStorageKey(noteId),
-      JSON.stringify(Array.from(checkedSet)),
-    ).catch(() => {});
-  }, [checkedSet, noteId, loaded]);
+    AsyncStorage.setItem(storageKey, JSON.stringify(Array.from(checkedSet))).catch(() => {});
+  }, [checkedSet, storageKey, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    AsyncStorage.setItem(editsKey, JSON.stringify(editedTexts)).catch(() => {});
+  }, [editedTexts, editsKey, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    AsyncStorage.setItem(deletedKey, JSON.stringify(Array.from(deletedSet))).catch(() => {});
+  }, [deletedSet, deletedKey, loaded]);
+
+  useEffect(() => {
+    if (!loaded || customOrder === null) return;
+    AsyncStorage.setItem(orderKey, JSON.stringify(customOrder)).catch(() => {});
+  }, [customOrder, orderKey, loaded]);
 
   const toggleTask = useCallback((index: number) => {
     selectionTap();
     setCheckedSet((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   }, []);
 
-  const completedCount = checkedSet.size;
-  const totalCount = tasks.length;
+  const editTask = useCallback((index: number, text: string) => {
+    setEditedTexts((prev) => ({ ...prev, [index]: text }));
+  }, []);
+
+  const deleteTask = useCallback((index: number) => {
+    selectionTap();
+    setDeletedSet((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+    showToast('Tarea eliminada', 'info');
+  }, []);
+
+  const moveTask = useCallback((priority: Priority, fromIdx: number, direction: 'up' | 'down') => {
+    const visible = tasks.filter((t) => !deletedSet.has(t.originalIndex));
+    const groupItems = visible.filter((t) => t.priority === priority);
+    const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1;
+    if (toIdx < 0 || toIdx >= groupItems.length) return;
+    // Build a new order array based on the full visible task list
+    const ordered = customOrder ?? visible.map((t) => t.originalIndex);
+    const fromOrig = groupItems[fromIdx].originalIndex;
+    const toOrig = groupItems[toIdx].originalIndex;
+    const newOrder = [...ordered];
+    const fi = newOrder.indexOf(fromOrig);
+    const ti = newOrder.indexOf(toOrig);
+    if (fi >= 0 && ti >= 0) { newOrder[fi] = toOrig; newOrder[ti] = fromOrig; }
+    setCustomOrder(newOrder);
+  }, [tasks, deletedSet, customOrder]);
+
+  const baseVisible = tasks.filter((t) => !deletedSet.has(t.originalIndex));
+  const visibleTasks = customOrder
+    ? [...baseVisible].sort((a, b) => {
+        const ai = customOrder.indexOf(a.originalIndex);
+        const bi = customOrder.indexOf(b.originalIndex);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      })
+    : baseVisible;
+  const completedCount = visibleTasks.filter((t) => checkedSet.has(t.originalIndex)).length;
+  const totalCount = visibleTasks.length;
 
   // Group tasks by priority
   const grouped = PRIORITY_ORDER.reduce<Record<Priority, TaskItem[]>>(
     (acc, p) => {
-      acc[p] = tasks.filter((t) => t.priority === p);
+      acc[p] = visibleTasks.filter((t) => t.priority === p);
       return acc;
     },
     { high: [], medium: [], low: [] },
@@ -403,17 +618,24 @@ function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId
               </Text>
               <Text style={styles.priorityCount}>({group.length})</Text>
             </View>
-            {group.map((task) => (
+            {group.map((task, idx) => (
               <TaskCheckbox
                 key={task.originalIndex}
                 task={task}
                 checked={checkedSet.has(task.originalIndex)}
                 onToggle={() => toggleTask(task.originalIndex)}
+                editedText={editedTexts[task.originalIndex]}
+                onEdit={(text) => editTask(task.originalIndex, text)}
+                onDelete={() => deleteTask(task.originalIndex)}
+                onMoveUp={idx > 0 ? () => moveTask(priority, idx, 'up') : undefined}
+                onMoveDown={idx < group.length - 1 ? () => moveTask(priority, idx, 'down') : undefined}
               />
             ))}
           </View>
         );
       })}
+
+      <CopyResultFooter mode="tasks" result={result} />
     </View>
   );
 }
@@ -482,6 +704,8 @@ function ActionPlanView({ result }: { result: Record<string, unknown> }) {
           </Card>
         </>
       ) : null}
+
+      <CopyResultFooter mode="action_plan" result={result} />
     </View>
   );
 }
@@ -609,6 +833,8 @@ function ExecutiveReportView({ result }: { result: Record<string, unknown> }) {
           <ChipRow items={participants} />
         </>
       )}
+
+      <CopyResultFooter mode="executive_report" result={result} />
     </View>
   );
 }
@@ -726,6 +952,8 @@ function StudyView({ result }: { result: Record<string, unknown> }) {
           <BulletList items={mnemonics} />
         </>
       )}
+
+      <CopyResultFooter mode="study" result={result} />
     </View>
   );
 }
@@ -802,6 +1030,8 @@ function IdeasView({ result }: { result: Record<string, unknown> }) {
           </Card>
         </>
       ) : null}
+
+      <CopyResultFooter mode="ideas" result={result} />
     </View>
   );
 }
@@ -852,6 +1082,25 @@ const styles = StyleSheet.create({
   // -- Layout --
   modeContainer: {
     gap: 16,
+  },
+
+  // -- Copy result footer --
+  copyResultFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    marginTop: 4,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  copyResultFooterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
 
   // -- Section headers --
@@ -1037,6 +1286,29 @@ const styles = StyleSheet.create({
   taskTextChecked: {
     textDecorationLine: 'line-through',
     color: COLORS.textMuted,
+  },
+  taskEditInput: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  taskActions: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+    marginLeft: 4,
+  },
+  reorderBtn: {
+    padding: 2,
+  },
+  taskDeleteBtn: {
+    padding: 4,
+    marginTop: 2,
   },
   taskMeta: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Animated,
   useWindowDimensions,
 } from 'react-native';
 import RNAnimated, {
@@ -17,7 +16,6 @@ import RNAnimated, {
   withTiming,
   withDelay,
   Easing,
-  FadeInUp,
   FadeInLeft,
   ZoomIn,
 } from 'react-native-reanimated';
@@ -32,7 +30,7 @@ import { lightTap, successTap } from '@/lib/haptics';
 import FloatingOrb from '@/components/FloatingOrb';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
-export const ONBOARDING_KEY = 'voicenotes_onboarding_done';
+export const ONBOARDING_KEY = 'sythio_onboarding_done';
 
 interface OnboardingPage {
   icon: keyof typeof Ionicons.glyphMap;
@@ -44,21 +42,21 @@ interface OnboardingPage {
 const PAGES: OnboardingPage[] = [
   {
     icon: 'mic',
-    iconColor: COLORS.recording,
-    title: 'Graba cualquier conversación',
-    subtitle: 'Reuniones, clases, ideas, lo que sea. Solo toca y habla.',
+    iconColor: COLORS.primaryLight,
+    title: 'Habla. Sythio escucha.',
+    subtitle: 'Graba reuniones, ideas, clases o cualquier conversación. Solo toca y habla.',
   },
   {
     icon: 'sparkles',
-    iconColor: '#F8C537',
-    title: 'Magia instantánea',
-    subtitle: 'Resumen, puntos clave y tareas en segundos gracias a la IA.',
+    iconColor: COLORS.primaryLight,
+    title: 'Un audio, múltiples resultados',
+    subtitle: 'Resumen, tareas, plan de acción, reporte, mensaje listo. Tú eliges el formato.',
   },
   {
-    icon: 'bulb',
-    iconColor: COLORS.primary,
-    title: 'Tu segundo cerebro',
-    subtitle: 'No pierdas ni una idea nunca más. Todo organizado y exportable.',
+    icon: 'layers-outline',
+    iconColor: COLORS.primaryLight,
+    title: 'De voz a claridad y acción',
+    subtitle: 'Todo estructurado, exportable y listo para usar. Sin perder ni una idea.',
   },
 ];
 
@@ -172,16 +170,10 @@ function BarsIllustration() {
 /* ── Page 3: Network illustration ──────────────────────── */
 const NODE_COLORS = [COLORS.primary, COLORS.info, COLORS.success, COLORS.warning];
 const NODE_OFFSETS = [
-  { top: -30, left: -30 },   // top-left
-  { top: -30, right: -30 },  // top-right
-  { bottom: -30, left: -30 },  // bottom-left
-  { bottom: -30, right: -30 }, // bottom-right
-];
-const LINE_POSITIONS: { angle: string; origin: string }[] = [
-  { angle: '-45deg', origin: 'center left' },
-  { angle: '45deg', origin: 'center right' },
-  { angle: '-135deg', origin: 'center left' },
-  { angle: '135deg', origin: 'center right' },
+  { top: -30, left: -30 },
+  { top: -30, right: -30 },
+  { bottom: -30, left: -30 },
+  { bottom: -30, right: -30 },
 ];
 
 function GrowingLine({
@@ -189,19 +181,19 @@ function GrowingLine({
   position,
 }: {
   index: number;
-  position: typeof NODE_OFFSETS[number];
+  position: (typeof NODE_OFFSETS)[number];
 }) {
-  const width = useSharedValue(0);
+  const lineWidth = useSharedValue(0);
 
   useEffect(() => {
-    width.value = withDelay(
+    lineWidth.value = withDelay(
       index * 200 + 300,
       withTiming(50, { duration: 600, easing: Easing.out(Easing.ease) }),
     );
-  }, [width, index]);
+  }, [lineWidth, index]);
 
   const animStyle = useAnimatedStyle(() => ({
-    width: width.value,
+    width: lineWidth.value,
   }));
 
   const isTop = 'top' in position;
@@ -230,15 +222,10 @@ function GrowingLine({
 function NetworkIllustration() {
   return (
     <View style={illustrationStyles.networkContainer}>
-      {/* Center circle */}
       <View style={illustrationStyles.centerNode} />
-
-      {/* Lines */}
       {NODE_OFFSETS.map((pos, i) => (
         <GrowingLine key={`line-${i}`} index={i} position={pos} />
       ))}
-
-      {/* Corner nodes */}
       {NODE_OFFSETS.map((pos, i) => (
         <RNAnimated.View
           key={`node-${i}`}
@@ -295,7 +282,6 @@ const illustrationStyles = StyleSheet.create({
   },
 });
 
-/* ── Illustrations array ───────────────────────────────── */
 const ILLUSTRATIONS: React.FC[] = [
   MicIllustration,
   BarsIllustration,
@@ -304,44 +290,18 @@ const ILLUSTRATIONS: React.FC[] = [
 
 /* ── Main screen ───────────────────────────────────────── */
 export default function OnboardingScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height: screenHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [pageHeight, setPageHeight] = useState(screenHeight * 0.55);
 
-  const iconAnims = useRef(PAGES.map(() => new Animated.Value(0))).current;
-  const textAnims = useRef(PAGES.map(() => new Animated.Value(0))).current;
-
-  useEffect(() => {
-    animatePage(0);
-  }, []);
-
-  const animatePage = (index: number) => {
-    iconAnims[index].setValue(0);
-    textAnims[index].setValue(0);
-
-    Animated.sequence([
-      Animated.spring(iconAnims[index], {
-        toValue: 1,
-        tension: 60,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.timing(textAnims[index], {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const handleScroll = useCallback(
+  const handleScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = e.nativeEvent.contentOffset.x;
       const page = Math.round(offsetX / width);
-      if (page >= 0 && page < PAGES.length && page !== currentPage) {
+      if (page >= 0 && page < PAGES.length) {
+        if (page !== currentPage) lightTap();
         setCurrentPage(page);
-        animatePage(page);
-        lightTap();
       }
     },
     [width, currentPage],
@@ -351,6 +311,7 @@ export default function OnboardingScreen() {
     if (currentPage < PAGES.length - 1) {
       lightTap();
       const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
       scrollRef.current?.scrollTo({ x: nextPage * width, animated: true });
     } else {
       handleComplete();
@@ -361,14 +322,14 @@ export default function OnboardingScreen() {
     successTap();
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
     if (__DEV__) console.log('[onboarding] flag saved, navigating to login');
-    router.replace('/login');
+    router.replace('/(auth)/login');
   };
 
   const isLastPage = currentPage === PAGES.length - 1;
 
   return (
     <LinearGradient
-      colors={['#FAFAFA', '#F0EFFF', '#E8E6FF']}
+      colors={['#FAFAFA', '#F0F7FF', '#E8F4FF']}
       style={styles.gradient}
     >
       <SafeAreaView style={styles.container}>
@@ -376,70 +337,49 @@ export default function OnboardingScreen() {
         <FloatingOrb size={300} color={COLORS.primaryLight} top={-80} right={-100} />
         <FloatingOrb size={220} color={COLORS.primary} top={400} left={-60} delay={600} />
 
-        {/* Skip button */}
-        {!isLastPage && (
-          <AnimatedPressable onPress={handleComplete} style={styles.skipButton}>
-            <Text style={styles.skipText}>Saltar</Text>
-          </AnimatedPressable>
-        )}
+        {/* Header with skip button */}
+        <View style={styles.headerRow}>
+          {!isLastPage ? (
+            <AnimatedPressable onPress={handleComplete} style={styles.skipButton}>
+              <Text style={styles.skipText}>Saltar</Text>
+            </AnimatedPressable>
+          ) : (
+            <View />
+          )}
+        </View>
 
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          decelerationRate="fast"
-          bounces={false}
+        {/* Pages */}
+        <View
+          style={styles.pagesContainer}
+          onLayout={(e) => setPageHeight(e.nativeEvent.layout.height)}
         >
-          {PAGES.map((page, index) => {
-            const Illustration = ILLUSTRATIONS[index];
-            return (
-              <View key={index} style={[styles.page, { width }]}>
-                <Animated.View
-                  style={[
-                    styles.iconContainer,
-                    {
-                      transform: [
-                        {
-                          scale: iconAnims[index].interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.3, 1],
-                          }),
-                        },
-                      ],
-                      opacity: iconAnims[index],
-                    },
-                  ]}
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleScrollEnd}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
+            bounces={false}
+          >
+            {PAGES.map((page, index) => {
+              const Illustration = ILLUSTRATIONS[index];
+              return (
+                <View
+                  key={index}
+                  style={[styles.page, { width, height: pageHeight }]}
                 >
-                  <Illustration />
-                </Animated.View>
-
-                <Animated.View
-                  style={{
-                    opacity: textAnims[index],
-                    transform: [
-                      {
-                        translateY: textAnims[index].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        }),
-                      },
-                    ],
-                  }}
-                >
-                  <RNAnimated.View entering={FadeInUp.delay(300)}>
-                    <Text style={styles.title}>{page.title}</Text>
-                  </RNAnimated.View>
-                  <RNAnimated.View entering={FadeInUp.delay(500)}>
-                    <Text style={styles.subtitle}>{page.subtitle}</Text>
-                  </RNAnimated.View>
-                </Animated.View>
-              </View>
-            );
-          })}
-        </ScrollView>
+                  <View style={styles.illustrationWrapper}>
+                    <Illustration />
+                  </View>
+                  <Text style={styles.title}>{page.title}</Text>
+                  <Text style={styles.subtitle}>{page.subtitle}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         {/* Bottom section */}
         <View style={styles.bottom}>
@@ -469,7 +409,7 @@ export default function OnboardingScreen() {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Text style={styles.startButtonText}>Empezar gratis</Text>
+                <Text style={styles.startButtonText}>Comenzar con Sythio</Text>
               </LinearGradient>
             </AnimatedPressable>
           ) : (
@@ -497,12 +437,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    height: 44,
+  },
   skipButton: {
-    position: 'absolute',
-    top: 60,
-    right: 24,
-    zIndex: 10,
-    paddingVertical: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 12,
   },
   skipText: {
@@ -510,34 +456,38 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontWeight: '500',
   },
+  pagesContainer: {
+    flex: 1,
+  },
   page: {
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  iconContainer: {
-    marginBottom: 20,
+  illustrationWrapper: {
+    marginBottom: 24,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     color: COLORS.textPrimary,
     textAlign: 'center',
-    marginTop: 40,
+    marginTop: 16,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 26,
-    paddingHorizontal: 32,
-    marginTop: 16,
+    lineHeight: 24,
+    paddingHorizontal: 16,
+    marginTop: 12,
   },
   bottom: {
     paddingHorizontal: 32,
-    paddingBottom: 48,
-    gap: 28,
+    paddingBottom: 24,
+    gap: 20,
     alignItems: 'center',
   },
   dots: {
@@ -569,7 +519,7 @@ const styles = StyleSheet.create({
   },
   startButton: {
     width: '100%',
-    height: 58,
+    height: 56,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',

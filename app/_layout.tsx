@@ -1,14 +1,19 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/authStore';
+import { useThemeStore } from '@/stores/themeStore';
+import { useIsDark } from '@/lib/constants';
+import { configurePurchases, checkPremiumEntitlement, onCustomerInfoUpdated } from '@/lib/purchases';
 import ToastProvider from '@/components/Toast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-const ONBOARDING_KEY = 'voicenotes_onboarding_done';
+const ONBOARDING_KEY = 'sythio_onboarding_done';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -18,79 +23,103 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
-  // 1. Initialize auth + read onboarding flag
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  const isDark = useIsDark();
+
+  // 1. Initialize auth + theme + purchases + read onboarding flag
   useEffect(() => {
     initialize();
+    useThemeStore.getState().initialize();
+
+    // Initialize RevenueCat and sync premium status
+    configurePurchases().then(() => {
+      checkPremiumEntitlement().then((isPremium) => {
+        const currentPlan = useAuthStore.getState().user?.plan;
+        if (isPremium && currentPlan !== 'premium') {
+          useAuthStore.getState().setPlan('premium');
+        }
+      });
+    });
+
+    // Listen for entitlement changes (renewal, expiry, etc.)
+    const unsubPurchases = onCustomerInfoUpdated((isPremium) => {
+      useAuthStore.getState().setPlan(isPremium ? 'premium' : 'free');
+    });
+
     AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
       const done = val === 'true';
       if (__DEV__) console.log('[layout] onboarding flag:', done);
       setOnboardingDone(done);
     });
+
+    return () => { unsubPurchases(); };
   }, [initialize]);
 
   // 2. Hide splash once both are ready
   useEffect(() => {
-    if (!loading && onboardingDone !== null) {
+    if (!loading && onboardingDone !== null && fontsLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [loading, onboardingDone]);
+  }, [loading, onboardingDone, fontsLoaded]);
 
-  // 3. Navigation guard — runs after layout is mounted and state is known
+  // 3. Navigation guard
   useEffect(() => {
     if (loading || onboardingDone === null) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const inTabsGroup = segments[0] === '(tabs)';
+    const navigate = async () => {
+      let done = onboardingDone;
 
-    if (__DEV__) {
-      console.log('[layout] session:', !!session, 'onboarding:', onboardingDone, 'segments:', segments);
-    }
+      // Re-verify from storage to avoid stale state after onboarding completes
+      if (!done) {
+        const val = await AsyncStorage.getItem(ONBOARDING_KEY);
+        if (val === 'true') {
+          setOnboardingDone(true);
+          return; // Will re-trigger with updated state
+        }
+      }
 
-    if (!onboardingDone) {
-      // First time ever — show onboarding
-      if (segments[1] !== 'onboarding') {
-        router.replace('/(auth)/onboarding');
+      const inAuthGroup = segments[0] === '(auth)';
+      const inTabsGroup = segments[0] === '(tabs)';
+
+      if (__DEV__) {
+        console.log('[layout] session:', !!session, 'onboarding:', done, 'segments:', segments);
       }
-    } else if (!session) {
-      // Onboarding done but not logged in — show login
-      if (!inAuthGroup || segments[1] === 'onboarding') {
-        router.replace('/(auth)/login');
+
+      if (!done) {
+        if (segments[1] !== 'onboarding') {
+          router.replace('/(auth)/onboarding');
+        }
+      } else if (!session) {
+        if (!inAuthGroup || segments[1] === 'onboarding') {
+          router.replace('/(auth)/login');
+        }
+      } else {
+        if (!inTabsGroup) {
+          router.replace('/(tabs)');
+        }
       }
-    } else {
-      // Logged in — show tabs
-      if (!inTabsGroup) {
-        router.replace('/(tabs)');
-      }
-    }
+    };
+
+    navigate();
   }, [session, loading, onboardingDone, segments, router]);
 
-  // Called from onboarding screen to update the flag without re-reading AsyncStorage
-  // (onboarding writes it then navigates to login, but we also listen here)
-  const checkOnboardingFlag = useCallback(async () => {
-    const val = await AsyncStorage.getItem(ONBOARDING_KEY);
-    if (val === 'true' && !onboardingDone) {
-      setOnboardingDone(true);
-    }
-  }, [onboardingDone]);
-
-  // Re-check onboarding flag when auth state changes (covers login after onboarding)
-  useEffect(() => {
-    if (session && !onboardingDone) {
-      checkOnboardingFlag();
-    }
-  }, [session, onboardingDone, checkOnboardingFlag]);
-
-  if (loading || onboardingDone === null) {
+  if (loading || onboardingDone === null || !fontsLoaded) {
     return null;
   }
 
   return (
     <ErrorBoundary>
-      <View style={styles.root}>
-        <StatusBar style="dark" />
+      <GestureHandlerRootView style={styles.root}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <Slot />
         <ToastProvider />
-      </View>
+      </GestureHandlerRootView>
     </ErrorBoundary>
   );
 }

@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getModeConfig } from '@/lib/constants';
-import { shadows } from '@/lib/styles';
 import { cardEntry } from '@/lib/animations';
 import { lightTap } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
@@ -69,8 +68,8 @@ function ActionCard({
       <View style={styles.iconCircle}>
         <Ionicons
           name={modeConfig.icon as keyof typeof Ionicons.glyphMap}
-          size={28}
-          color={COLORS.primary}
+          size={22}
+          color='#0B0B0B'
         />
       </View>
       <Text style={styles.cardLabel} numberOfLines={2}>
@@ -110,33 +109,34 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   card: {
     flexBasis: '47%',
     flexGrow: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    padding: 16,
-    ...shadows.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EBEDF0',
   },
   iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceAlt,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F5F7FA',
     justifyContent: 'center',
     alignItems: 'center',
   },
   cardLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginTop: 12,
+    color: '#0B0B0B',
+    marginTop: 10,
   },
   cardSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
+    fontSize: 11,
+    color: '#B8BCC4',
     marginTop: 2,
   },
 });

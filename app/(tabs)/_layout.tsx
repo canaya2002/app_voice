@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AnimatedPressable from '@/components/AnimatedPressable';
-import { COLORS } from '@/lib/constants';
+import { COLORS, useThemeColors } from '@/lib/constants';
 import { shadows } from '@/lib/styles';
 import { selectionTap } from '@/lib/haptics';
 
@@ -43,11 +43,12 @@ interface TabItemProps {
 }
 
 function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
-  const bgOpacity = useSharedValue(focused ? 1 : 0);
-  bgOpacity.value = withSpring(focused ? 1 : 0, { damping: 20, stiffness: 300 });
+  const scale = useSharedValue(focused ? 1 : 0);
+  scale.value = withSpring(focused ? 1 : 0, { damping: 20, stiffness: 300 });
 
-  const bgStyle = useAnimatedStyle(() => ({
-    backgroundColor: `rgba(240, 239, 255, ${bgOpacity.value})`,
+  const dotStyle = useAnimatedStyle(() => ({
+    opacity: scale.value,
+    transform: [{ scale: scale.value }],
   }));
 
   return (
@@ -61,17 +62,17 @@ function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
       scaleDown={0.92}
       accessibilityLabel={config.label}
     >
-      <Animated.View style={[styles.tabInner, bgStyle]}>
+      <View style={styles.tabInner}>
         <Ionicons
           name={focused ? config.iconFocused : config.iconDefault}
-          size={focused ? 24 : 22}
+          size={22}
           color={focused ? COLORS.primary : COLORS.textMuted}
         />
         {focused && (
           <Text style={styles.tabLabel}>{config.label}</Text>
         )}
-        {focused && <View style={styles.tabDot} />}
-      </Animated.View>
+        <Animated.View style={[styles.tabDot, dotStyle]} />
+      </View>
     </AnimatedPressable>
   );
 }
@@ -82,10 +83,11 @@ function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
 
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
 
   return (
     <View style={[styles.tabBarOuter, { bottom: Math.max(insets.bottom, 8) + 8 }]}>
-      <View style={styles.tabBarContainer}>
+      <View style={[styles.tabBarContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {state.routes.map((route, index) => {
           const config = TAB_CONFIG.find((t) => t.name === route.name);
           if (!config) return null;
@@ -176,12 +178,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 20,
-    height: 68,
-    borderRadius: 24,
-    backgroundColor: `${COLORS.surface}F8`,
-    paddingHorizontal: 12,
+    height: 60,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 16,
     gap: 8,
-    ...shadows.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
 
   // -- Tab item ---------------------------------------------------------------
@@ -191,23 +199,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabInner: {
-    width: 64,
-    height: 48,
-    borderRadius: 16,
+    width: 56,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: COLORS.primary,
-    marginTop: 1,
+    marginTop: 2,
   },
   tabDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
     marginTop: 2,
   },
 });

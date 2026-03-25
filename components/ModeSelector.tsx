@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, MODE_CONFIGS } from '@/lib/constants';
+import { COLORS, MODE_CONFIGS, isModeFreeTier } from '@/lib/constants';
 import { selectionTap } from '@/lib/haptics';
 import type { OutputMode } from '@/types';
 
@@ -21,6 +21,8 @@ interface ModeSelectorProps {
   generatedModes: OutputMode[];
   onSelectMode: (mode: OutputMode) => void;
   onGenerateMode: (mode: OutputMode) => void;
+  onPremiumRequired?: (mode: OutputMode) => void;
+  userPlan?: 'free' | 'premium';
   loading?: boolean;
   loadingMode?: OutputMode | null;
 }
@@ -34,6 +36,8 @@ export default function ModeSelector({
   generatedModes,
   onSelectMode,
   onGenerateMode,
+  onPremiumRequired,
+  userPlan = 'free',
   loading = false,
   loadingMode = null,
 }: ModeSelectorProps) {
@@ -50,10 +54,15 @@ export default function ModeSelector({
         const isCurrent = config.id === currentMode;
         const isGenerated = generatedSet.has(config.id);
         const isLoading = loading && loadingMode === config.id;
+        const isLocked = userPlan === 'free' && !isModeFreeTier(config.id) && !isGenerated;
 
         const handlePress = () => {
           selectionTap();
           if (isCurrent) return;
+          if (isLocked) {
+            onPremiumRequired?.(config.id);
+            return;
+          }
           if (isGenerated) {
             onSelectMode(config.id);
           } else {
@@ -113,9 +122,12 @@ export default function ModeSelector({
             )}
 
             <Text style={[styles.chipText, textStyle]} numberOfLines={1}>
-              {!isGenerated && !isCurrent ? '+ ' : ''}
+              {isLocked ? '' : (!isGenerated && !isCurrent ? '+ ' : '')}
               {config.label}
             </Text>
+            {isLocked && (
+              <Ionicons name="lock-closed" size={10} color={COLORS.textMuted} />
+            )}
           </TouchableOpacity>
         );
       })}

@@ -11,7 +11,7 @@ export async function requestAudioPermissions(): Promise<boolean> {
   if (existing === 'denied') {
     Alert.alert(
       'Micrófono necesario',
-      'VoiceNotes necesita acceso al micrófono para grabar. Actívalo en Configuración.',
+      'Sythio necesita acceso al micrófono para grabar. Actívalo en Configuración.',
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Abrir Configuración', onPress: () => Linking.openSettings() },

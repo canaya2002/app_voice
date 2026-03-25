@@ -61,6 +61,92 @@ function buildReportSheets(result: Record<string, unknown>): SheetData[] {
   return sheets;
 }
 
+function buildSummarySheets(result: Record<string, unknown>): SheetData[] {
+  const sheets: SheetData[] = [];
+  const keyPoints = Array.isArray(result.key_points) ? result.key_points as string[] : [];
+  const topics = Array.isArray(result.topics) ? result.topics as string[] : [];
+  sheets.push({
+    name: 'Resumen',
+    data: [
+      ['Resumen', String(result.summary ?? '')],
+      [],
+      ['Puntos clave'],
+      ...keyPoints.map((p) => [String(p)]),
+      [],
+      ['Temas'],
+      ...topics.map((t) => [String(t)]),
+    ],
+  });
+  return sheets;
+}
+
+function buildStudySheets(result: Record<string, unknown>): SheetData[] {
+  const sheets: SheetData[] = [];
+  const concepts = Array.isArray(result.key_concepts) ? result.key_concepts as Record<string, unknown>[] : [];
+  const review = Array.isArray(result.review_points) ? result.review_points as string[] : [];
+  const questions = Array.isArray(result.probable_questions) ? result.probable_questions as Record<string, unknown>[] : [];
+
+  if (concepts.length) {
+    sheets.push({
+      name: 'Conceptos',
+      data: [['Concepto', 'Explicación'], ...concepts.map((c) => [String(c.concept ?? c.term ?? ''), String(c.explanation ?? c.definition ?? '')])],
+    });
+  }
+  if (review.length) {
+    sheets.push({
+      name: 'Repaso',
+      data: [['Punto de repaso'], ...review.map((r) => [String(r)])],
+    });
+  }
+  if (questions.length) {
+    sheets.push({
+      name: 'Preguntas',
+      data: [['Pregunta', 'Pista'], ...questions.map((q) => [String(q.question ?? ''), String(q.hint ?? q.answer ?? '')])],
+    });
+  }
+  if (!sheets.length) {
+    sheets.push({ name: 'Estudio', data: [['Resumen', String(result.summary ?? '')]] });
+  }
+  return sheets;
+}
+
+function buildIdeasSheets(result: Record<string, unknown>): SheetData[] {
+  const opps = Array.isArray(result.opportunities) ? result.opportunities as Record<string, unknown>[] : [];
+  const questions = Array.isArray(result.open_questions) ? result.open_questions as string[] : [];
+  const rows: (string | number | null)[][] = [
+    ['Idea central', String(result.core_idea ?? '')],
+    [],
+  ];
+  if (opps.length) {
+    rows.push(['Oportunidad', 'Potencial']);
+    opps.forEach((o) => rows.push([String(o.opportunity ?? o.text ?? ''), String(o.potential ?? '')]));
+    rows.push([]);
+  }
+  if (questions.length) {
+    rows.push(['Preguntas abiertas']);
+    questions.forEach((q) => rows.push([String(q)]));
+    rows.push([]);
+  }
+  if (result.suggested_next_step) rows.push(['Siguiente paso', String(result.suggested_next_step)]);
+  return [{ name: 'Ideas', data: rows }];
+}
+
+function buildCleanTextSheets(result: Record<string, unknown>): SheetData[] {
+  return [{ name: 'Texto limpio', data: [['Texto'], [String(result.clean_text ?? '')]] }];
+}
+
+function buildReadyMessageSheets(result: Record<string, unknown>): SheetData[] {
+  const messages = typeof result.messages === 'object' && result.messages ? result.messages as Record<string, unknown> : {};
+  const rows: (string | number | null)[][] = [['Tono', 'Mensaje']];
+  const tones = [['professional', 'Profesional'], ['friendly', 'Amigable'], ['firm', 'Firme'], ['brief', 'Breve']];
+  tones.forEach(([key, label]) => {
+    const text = messages[key];
+    if (typeof text === 'string' && text) rows.push([label, text]);
+  });
+  if (result.suggested_subject) rows.push([], ['Asunto sugerido', String(result.suggested_subject)]);
+  return [{ name: 'Mensajes', data: rows }];
+}
+
 function buildActionPlanSheets(result: Record<string, unknown>): SheetData[] {
   const steps = Array.isArray(result.steps) ? result.steps as Record<string, unknown>[] : [];
   return [{
@@ -86,14 +172,29 @@ export async function exportToExcel(
   let sheets: SheetData[] = [];
 
   switch (mode) {
+    case 'summary':
+      sheets = buildSummarySheets(result);
+      break;
     case 'tasks':
       sheets = buildTasksSheets(result);
+      break;
+    case 'action_plan':
+      sheets = buildActionPlanSheets(result);
+      break;
+    case 'clean_text':
+      sheets = buildCleanTextSheets(result);
       break;
     case 'executive_report':
       sheets = buildReportSheets(result);
       break;
-    case 'action_plan':
-      sheets = buildActionPlanSheets(result);
+    case 'ready_message':
+      sheets = buildReadyMessageSheets(result);
+      break;
+    case 'study':
+      sheets = buildStudySheets(result);
+      break;
+    case 'ideas':
+      sheets = buildIdeasSheets(result);
       break;
     default:
       showToast('Este modo no soporta exportación Excel', 'info');
@@ -107,7 +208,7 @@ export async function exportToExcel(
   });
 
   const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-  const sanitizedTitle = (note.title || 'voicenotes').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+  const sanitizedTitle = (note.title || 'sythio').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
   const fileName = `${sanitizedTitle}_${mode}.xlsx`;
 
   const file = new File(Paths.cache, fileName);

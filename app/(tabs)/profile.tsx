@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, LIMITS } from '@/lib/constants';
+import { COLORS, LIMITS, useThemeColors } from '@/lib/constants';
+import { useThemeStore } from '@/stores/themeStore';
+import { track } from '@/lib/analytics';
+import Paywall from '@/components/Paywall';
 import { shadows } from '@/lib/styles';
 import { cardEntry, FadeInUp, ZoomIn } from '@/lib/animations';
 import AnimatedPressable from '@/components/AnimatedPressable';
@@ -26,11 +29,11 @@ interface StatCardConfig {
 }
 
 const STAT_CARD_STYLES: StatCardConfig[] = [
-  { bg: '#F0EFFF', iconColor: COLORS.primary, icon: 'mic', labelKey: 'Notas' },
-  { bg: '#E1F5EE', iconColor: '#0F6E56', icon: 'time', labelKey: 'Tiempo' },
-  { bg: '#FEF3C7', iconColor: '#92400E', icon: 'checkbox', labelKey: 'Tareas' },
-  { bg: '#E6F1FB', iconColor: '#185FA5', icon: 'chatbubbles', labelKey: 'Conversaciones' },
-  { bg: '#FBEAF0', iconColor: '#993556', icon: 'calendar', labelKey: 'Este mes' },
+  { bg: COLORS.surfaceAlt, iconColor: COLORS.textPrimary, icon: 'mic', labelKey: 'Notas' },
+  { bg: COLORS.surfaceAlt, iconColor: COLORS.textPrimary, icon: 'time', labelKey: 'Tiempo' },
+  { bg: COLORS.surfaceAlt, iconColor: COLORS.textPrimary, icon: 'checkbox', labelKey: 'Tareas' },
+  { bg: COLORS.surfaceAlt, iconColor: COLORS.textPrimary, icon: 'chatbubbles', labelKey: 'Conversaciones' },
+  { bg: COLORS.surfaceAlt, iconColor: COLORS.textPrimary, icon: 'calendar', labelKey: 'Este mes' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -38,6 +41,9 @@ const STAT_CARD_STYLES: StatCardConfig[] = [
 // ---------------------------------------------------------------------------
 
 export default function ProfileScreen() {
+  const colors = useThemeColors();
+  const { preference, setPreference } = useThemeStore();
+  const [showPaywall, setShowPaywall] = useState(false);
   const { user, logout } = useAuthStore();
   const { notes } = useNotesStore();
 
@@ -113,7 +119,7 @@ export default function ProfileScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <Animated.View entering={FadeInUp.delay(50).duration(500)} style={styles.header}>
@@ -122,18 +128,9 @@ export default function ProfileScreen() {
 
         {/* Avatar + identity */}
         <View style={styles.profileSection}>
-          <Animated.View entering={ZoomIn.springify().damping(12).stiffness(180)}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryLight]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatarGradient}
-            >
-              <View style={styles.avatarInner}>
-                <Text style={styles.avatarText}>{initial}</Text>
-              </View>
-            </LinearGradient>
-          </Animated.View>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{initial}</Text>
+          </View>
 
           <Animated.Text entering={FadeInUp.delay(150).duration(400)} style={styles.name}>
             {user?.email ?? ''}
@@ -143,7 +140,7 @@ export default function ProfileScreen() {
             <Ionicons
               name={user?.plan === 'premium' ? 'diamond' : 'leaf'}
               size={14}
-              color={COLORS.primary}
+              color="#8FD3FF"
             />
             <Text style={styles.planText}>
               {user?.plan === 'premium' ? 'Premium' : 'Plan gratuito'}
@@ -159,7 +156,7 @@ export default function ProfileScreen() {
               entering={cardEntry(index)}
               style={[styles.statCard, { backgroundColor: card.bg }]}
             >
-              <View style={[styles.statIconWrap, { backgroundColor: card.iconColor + '18' }]}>
+              <View style={styles.statIconWrap}>
                 <Ionicons name={card.icon} size={22} color={card.iconColor} />
               </View>
               <Text style={styles.statNumber}>{statValues[index]}</Text>
@@ -197,31 +194,52 @@ export default function ProfileScreen() {
         {/* Premium upsell */}
         {user?.plan === 'free' && (
           <Animated.View entering={cardEntry(6)}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.premiumCard}
-            >
+            <View style={styles.premiumCard}>
               <View style={styles.premiumHeader}>
-                <Ionicons name="diamond" size={24} color="#FFD700" />
-                <Text style={styles.premiumTitle}>VoiceNotes Premium</Text>
+                <Ionicons name="diamond" size={24} color="#8FD3FF" />
+                <Text style={styles.premiumTitle}>Sythio Premium</Text>
               </View>
               <View style={styles.premiumBenefits}>
-                <BenefitRow text="Notas ilimitadas por día" />
-                <BenefitRow text="Transcripciones más largas (30 min)" />
-                <BenefitRow text="Exportación avanzada" />
-                <BenefitRow text="Sin marca de agua en PDFs" />
+                <BenefitRow text="Audios ilimitados por día" />
+                <BenefitRow text="Audios de hasta 30 minutos" />
+                <BenefitRow text="Exportación avanzada por modo" />
+                <BenefitRow text="Todos los modos de salida" />
               </View>
               <AnimatedPressable
                 style={styles.premiumButton}
-                onPress={() => {}}
+                onPress={() => {
+                  lightTap();
+                  track('premium_cta_tapped', { source: 'profile' });
+                  setShowPaywall(true);
+                }}
               >
-                <Text style={styles.premiumButtonText}>Próximamente</Text>
+                <Text style={styles.premiumButtonText}>Ver planes</Text>
               </AnimatedPressable>
-            </LinearGradient>
+            </View>
           </Animated.View>
         )}
+
+        {/* Theme toggle */}
+        <Animated.View entering={cardEntry(7)} style={[styles.themeCard, { borderColor: colors.border }]}>
+          <Text style={[styles.themeTitle, { color: colors.textPrimary }]}>Apariencia</Text>
+          <View style={styles.themeOptions}>
+            {(['light', 'dark', 'system'] as const).map((opt) => {
+              const active = preference === opt;
+              const labels = { light: 'Claro', dark: 'Oscuro', system: 'Sistema' };
+              const icons = { light: 'sunny-outline', dark: 'moon-outline', system: 'phone-portrait-outline' } as const;
+              return (
+                <AnimatedPressable
+                  key={opt}
+                  onPress={() => setPreference(opt)}
+                  style={[styles.themeOption, active && { backgroundColor: colors.primary }]}
+                >
+                  <Ionicons name={icons[opt]} size={16} color={active ? (colors.background) : colors.textSecondary} />
+                  <Text style={[styles.themeOptionText, active && { color: colors.background }]}>{labels[opt]}</Text>
+                </AnimatedPressable>
+              );
+            })}
+          </View>
+        </Animated.View>
 
         {/* Actions */}
         <View style={styles.actionsSection}>
@@ -230,7 +248,7 @@ export default function ProfileScreen() {
             onPress={handleLogout}
             accessibilityLabel="Cerrar sesión"
           >
-            <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
+            <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
             <Text style={styles.logoutText}>Cerrar sesión</Text>
           </AnimatedPressable>
 
@@ -245,6 +263,8 @@ export default function ProfileScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="profile" />
     </SafeAreaView>
   );
 }
@@ -256,7 +276,7 @@ export default function ProfileScreen() {
 function BenefitRow({ text }: { text: string }) {
   return (
     <View style={styles.benefitRow}>
-      <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+      <Ionicons name="checkmark-circle" size={16} color="#8FD3FF" />
       <Text style={styles.benefitText}>{text}</Text>
     </View>
   );
@@ -272,7 +292,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 120,
   },
   header: {
     paddingHorizontal: 24,
@@ -290,28 +310,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
   },
-  avatarGradient: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInner: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+  avatarCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: COLORS.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: COLORS.primary,
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
   },
   name: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginTop: 14,
@@ -319,7 +332,7 @@ const styles = StyleSheet.create({
   planBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.info + '20',
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 10,
@@ -328,7 +341,7 @@ const styles = StyleSheet.create({
   },
   planText: {
     fontSize: 12,
-    color: COLORS.primary,
+    color: COLORS.primaryLight,
     fontWeight: '600',
   },
 
@@ -343,7 +356,7 @@ const styles = StyleSheet.create({
   statCard: {
     width: '47%',
     flexGrow: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 16,
     alignItems: 'center',
   },
@@ -351,12 +364,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
+    backgroundColor: COLORS.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.textPrimary,
     marginTop: 2,
@@ -375,7 +389,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 18,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   usageHeader: {
     flexDirection: 'row',
@@ -394,14 +409,14 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   usageBarBg: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.borderLight,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
     overflow: 'hidden',
   },
   usageBarFill: {
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
   },
   usageText: {
     fontSize: 12,
@@ -413,8 +428,9 @@ const styles = StyleSheet.create({
   premiumCard: {
     marginHorizontal: 24,
     marginBottom: 20,
-    borderRadius: 22,
+    borderRadius: 18,
     padding: 24,
+    backgroundColor: COLORS.primary,
   },
   premiumHeader: {
     flexDirection: 'row',
@@ -438,21 +454,56 @@ const styles = StyleSheet.create({
   },
   benefitText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
+    color: '#FFFFFF',
     fontWeight: '400',
   },
   premiumButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   premiumButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+
+  // -- Theme card -------------------------------------------------------------
+  themeCard: {
+    marginHorizontal: 24,
+    marginBottom: 20,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+  },
+  themeTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  themeOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  themeOptionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
 
   // -- Actions ---------------------------------------------------------------
@@ -470,15 +521,15 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     fontSize: 16,
-    color: COLORS.error,
+    color: '#FF3B30',
     fontWeight: '500',
   },
   deleteAccountButton: {
     paddingVertical: 8,
   },
   deleteAccountText: {
-    fontSize: 14,
-    color: COLORS.textMuted,
+    fontSize: 13,
+    color: '#B8BCC4',
     fontWeight: '400',
   },
 });

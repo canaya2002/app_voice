@@ -8,24 +8,35 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/lib/constants';
-import { exportPDF, copyToClipboard } from '@/lib/export';
-import type { Note } from '@/types';
+import * as Sharing from 'expo-sharing';
+import { COLORS, getModeConfig } from '@/lib/constants';
+import { exportPDF, copyToClipboard, buildPlainText } from '@/lib/export';
+import { exportToExcel } from '@/lib/export-excel';
+import { trackExport } from '@/lib/analytics';
+import type { Note, OutputMode } from '@/types';
 
 interface ExportButtonProps {
   note: Note;
+  activeMode?: OutputMode;
+  activeModeResult?: Record<string, unknown>;
 }
 
-export default function ExportButton({ note }: ExportButtonProps) {
+export default function ExportButton({ note, activeMode, activeModeResult }: ExportButtonProps) {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const modeConfig = activeMode ? getModeConfig(activeMode) : null;
+  const supportsExcel = modeConfig?.excelExport === true && activeModeResult != null;
+
+  const modeStr = activeMode ?? 'general';
 
   const handleExportPDF = async () => {
     setLoading(true);
     try {
-      await exportPDF(note);
-    } catch (err) {
-      // PDF export failed — user sees loading state reset
+      await exportPDF(note, activeMode, activeModeResult);
+      trackExport('pdf', modeStr);
+    } catch {
+      // PDF export failed
     } finally {
       setLoading(false);
       setVisible(false);
@@ -34,7 +45,40 @@ export default function ExportButton({ note }: ExportButtonProps) {
 
   const handleCopyText = async () => {
     await copyToClipboard(note);
+    trackExport('copy', modeStr);
     setVisible(false);
+  };
+
+  const handleShare = async () => {
+    try {
+      const text = buildPlainText(note);
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        // Create a temp file for sharing via the system share sheet
+        const { printToFileAsync } = await import('expo-print');
+        const { uri } = await printToFileAsync({ html: `<pre style="font-family:system-ui;white-space:pre-wrap;">${text.replace(/</g, '&lt;')}</pre>` });
+        await Sharing.shareAsync(uri, { mimeType: 'text/plain', dialogTitle: 'Compartir nota' });
+        trackExport('share', modeStr);
+      }
+    } catch {
+      // Share failed
+    } finally {
+      setVisible(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!activeMode || !activeModeResult) return;
+    setLoading(true);
+    try {
+      await exportToExcel(activeMode, activeModeResult, note);
+      trackExport('excel', modeStr);
+    } catch {
+      // Excel export failed
+    } finally {
+      setLoading(false);
+      setVisible(false);
+    }
   };
 
   return (
@@ -69,11 +113,35 @@ export default function ExportButton({ note }: ExportButtonProps) {
               </View>
             </TouchableOpacity>
 
+            {supportsExcel && (
+              <TouchableOpacity
+                style={styles.option}
+                onPress={handleExportExcel}
+                disabled={loading}
+              >
+                <Ionicons name="grid-outline" size={22} color={COLORS.primary} />
+                <View style={styles.optionText}>
+                  <Text style={styles.optionTitle}>Exportar Excel</Text>
+                  <Text style={styles.optionDesc}>
+                    {modeConfig!.label} en formato de hoja de cálculo
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity style={styles.option} onPress={handleCopyText}>
               <Ionicons name="copy-outline" size={22} color={COLORS.primary} />
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle}>Copiar texto</Text>
                 <Text style={styles.optionDesc}>Copia el contenido al portapapeles</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.option} onPress={handleShare}>
+              <Ionicons name="share-social-outline" size={22} color={COLORS.primary} />
+              <View style={styles.optionText}>
+                <Text style={styles.optionTitle}>Compartir</Text>
+                <Text style={styles.optionDesc}>Envía por mensaje, mail o cualquier app</Text>
               </View>
             </TouchableOpacity>
 

@@ -9,11 +9,9 @@ import {
   Animated as RNAnimated,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { COLORS } from '@/lib/constants';
-import { shadows } from '@/lib/styles';
+import { COLORS, getModeConfig } from '@/lib/constants';
 import { cardEntry } from '@/lib/animations';
 import { formatDurationLong } from '@/lib/audio';
 import { lightTap, errorTap } from '@/lib/haptics';
@@ -95,16 +93,16 @@ function getRelativeTime(dateStr: string): string {
 function getStatusBadge(status: string): { color: string; label: string; icon: keyof typeof Ionicons.glyphMap } {
   switch (status) {
     case 'done':
-      return { color: COLORS.success, label: 'Listo', icon: 'checkmark-circle' };
+      return { color: '#34C759', label: 'Listo', icon: 'checkmark-circle' };
     case 'error':
-      return { color: COLORS.error, label: 'Error', icon: 'alert-circle' };
+      return { color: '#FF3B30', label: 'Error', icon: 'alert-circle' };
     case 'recording':
     case 'uploading':
     case 'transcribing':
     case 'processing':
-      return { color: COLORS.warning, label: 'Procesando', icon: 'time' };
+      return { color: '#FF9500', label: 'Procesando', icon: 'time' };
     default:
-      return { color: COLORS.textMuted, label: status, icon: 'help-circle' };
+      return { color: '#B8BCC4', label: status, icon: 'help-circle' };
   }
 }
 
@@ -172,7 +170,6 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
 
   // -- Derived data ----------------------------------------------------------
   const badge = getStatusBadge(note.status);
-  const waveformBars = generateWaveformBars(note.id, BAR_COUNT);
 
   const taskCount = note.tasks?.length ?? 0;
   const showTasksChip = taskCount > 0;
@@ -238,16 +235,6 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
       >
         <AnimatedPressable onPress={handlePress} accessibilityLabel={`Nota: ${note.title}`}>
           <View style={styles.card}>
-            {/* Left accent bar */}
-            <View style={styles.accentBar}>
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryLight]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.accentGradient}
-              />
-            </View>
-
             {/* Row 1: title + relative time */}
             <View style={styles.topRow}>
               <Text style={styles.title} numberOfLines={1}>
@@ -265,8 +252,26 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
               </Text>
             ) : null}
 
+            {/* Mini waveform */}
+            {note.status === 'done' && (
+              <View style={styles.waveformRow}>
+                {generateWaveformBars(note.id, BAR_COUNT).map((h, i) => (
+                  <View
+                    key={i}
+                    style={[styles.waveformBar, { height: Math.max(3, h * MAX_WAVEFORM_HEIGHT) }]}
+                  />
+                ))}
+              </View>
+            )}
+
             {/* Badges with staggered entry */}
             <View style={styles.badgeRow}>
+              {note.primary_mode && (
+                <Animated.View entering={FadeIn.delay(index * 100 + 160)} style={styles.badgeMode}>
+                  <Ionicons name={getModeConfig(note.primary_mode).icon as keyof typeof Ionicons.glyphMap} size={11} color={COLORS.primaryLight} />
+                  <Text style={styles.badgeModeText}>{getModeConfig(note.primary_mode).label}</Text>
+                </Animated.View>
+              )}
               {note.template && note.template !== 'quick_idea' && (
                 <Animated.View entering={FadeIn.delay(index * 100 + 200)} style={styles.badgeTemplate}>
                   <Text style={styles.badgeTemplateText}>{note.template}</Text>
@@ -274,38 +279,25 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
               )}
               {note.is_conversation && note.speakers_detected > 1 && (
                 <Animated.View entering={FadeIn.delay(index * 100 + 280)} style={styles.badgeSpeakers}>
-                  <Ionicons name="people-outline" size={12} color="#059669" />
+                  <Ionicons name="people-outline" size={12} color="#8A8F98" />
                   <Text style={styles.badgeSpeakersText}>{note.speakers_detected} hablantes</Text>
                 </Animated.View>
               )}
               {showTasksChip && (
                 <Animated.View entering={FadeIn.delay(index * 100 + 360)} style={styles.badgeTasks}>
-                  <Ionicons name="checkbox-outline" size={12} color="#B45309" />
+                  <Ionicons name="checkbox-outline" size={12} color="#8A8F98" />
                   <Text style={styles.badgeTasksText}>
                     {taskCount} {taskCount === 1 ? 'tarea' : 'tareas'}
                   </Text>
                 </Animated.View>
               )}
               {/* Status badge */}
-              <View style={[styles.badgeStatus, { backgroundColor: badge.color + '18' }]}>
+              <View style={styles.badgeStatus}>
                 <View style={[styles.badgeStatusDot, { backgroundColor: badge.color }]} />
                 <Text style={[styles.badgeStatusText, { color: badge.color }]}>
                   {badge.label}
                 </Text>
               </View>
-            </View>
-
-            {/* Mini waveform: bottom right */}
-            <View style={styles.waveformContainer}>
-              {waveformBars.map((height, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.waveformBar,
-                    { height: Math.round(height * MAX_WAVEFORM_HEIGHT) },
-                  ]}
-                />
-              ))}
             </View>
           </View>
         </AnimatedPressable>
@@ -320,7 +312,7 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
 
 const styles = StyleSheet.create({
   outerWrapper: {
-    marginBottom: 12,
+    marginBottom: 10,
     position: 'relative',
   },
 
@@ -333,16 +325,16 @@ const styles = StyleSheet.create({
     width: DELETE_BUTTON_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   deleteButton: {
     flex: 1,
     width: '100%',
-    backgroundColor: COLORS.error,
+    backgroundColor: '#FF3B30',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
+    borderRadius: 14,
     gap: 4,
   },
   deleteText: {
@@ -354,29 +346,13 @@ const styles = StyleSheet.create({
   // -- Card ------------------------------------------------------------------
   cardOuter: {
     backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    ...shadows.lg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   card: {
     position: 'relative',
-    padding: 18,
-    overflow: 'hidden',
-  },
-
-  // -- Left accent bar -------------------------------------------------------
-  accentBar: {
-    position: 'absolute',
-    width: 4,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-    overflow: 'hidden',
-    opacity: 0.6,
-  },
-  accentGradient: {
-    flex: 1,
+    padding: 16,
   },
 
   // -- Top row ---------------------------------------------------------------
@@ -386,8 +362,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     color: COLORS.textPrimary,
     flex: 1,
     marginRight: 8,
@@ -399,10 +375,25 @@ const styles = StyleSheet.create({
 
   // -- Summary ---------------------------------------------------------------
   summary: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    lineHeight: 20,
-    marginTop: 6,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+
+  // -- Waveform row ----------------------------------------------------------
+  waveformRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    marginTop: 10,
+    height: MAX_WAVEFORM_HEIGHT,
+  },
+  waveformBar: {
+    flex: 1,
+    borderRadius: 1.5,
+    backgroundColor: COLORS.borderLight,
+    maxWidth: 4,
   },
 
   // -- Badge row -------------------------------------------------------------
@@ -412,51 +403,66 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 12,
   },
+  badgeMode: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: COLORS.info + '20',
+  },
+  badgeModeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primaryLight,
+  },
   badgeTemplate: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
     backgroundColor: COLORS.surfaceAlt,
   },
   badgeTemplateText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.primary,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
   badgeSpeakers: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#E1F5EE',
+    backgroundColor: COLORS.surfaceAlt,
   },
   badgeSpeakersText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#059669',
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
   badgeTasks: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: COLORS.surfaceAlt,
   },
   badgeTasksText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#B45309',
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
   badgeStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
+    backgroundColor: COLORS.surfaceAlt,
     gap: 5,
   },
   badgeStatusDot: {
@@ -466,23 +472,6 @@ const styles = StyleSheet.create({
   },
   badgeStatusText: {
     fontSize: 11,
-    fontWeight: '600',
-  },
-
-  // -- Mini waveform (bottom right) ------------------------------------------
-  waveformContainer: {
-    position: 'absolute',
-    bottom: 14,
-    right: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: MAX_WAVEFORM_HEIGHT,
-    gap: 2,
-  },
-  waveformBar: {
-    width: 2,
-    borderRadius: 1,
-    backgroundColor: COLORS.primaryLight,
-    opacity: 0.4,
+    fontWeight: '500',
   },
 });

@@ -4,6 +4,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -44,9 +45,9 @@ export default function AnimatedPressable({
       opacity.value = withSpring(1, SPRING_UP);
       if (success && onPress) {
         if (haptic) {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
         }
-        onPress();
+        runOnJS(onPress)();
       }
     });
 

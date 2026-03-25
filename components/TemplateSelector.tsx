@@ -54,7 +54,7 @@ function CompactChip({
       <Ionicons
         name={icon as keyof typeof Ionicons.glyphMap}
         size={16}
-        color={isSelected ? COLORS.primary : COLORS.textSecondary}
+        color={isSelected ? '#FFFFFF' : '#B8BCC4'}
       />
       <Text
         style={[
@@ -103,13 +103,13 @@ function GridCard({
     >
       {isSelected && (
         <View style={styles.checkBadge}>
-          <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
+          <Ionicons name="checkmark-circle" size={16} color='#0B0B0B' />
         </View>
       )}
       <Ionicons
         name={icon as keyof typeof Ionicons.glyphMap}
         size={24}
-        color={isSelected ? COLORS.primary : COLORS.primaryLight}
+        color={isSelected ? '#0B0B0B' : '#B8BCC4'}
       />
       <Text
         style={[
@@ -182,34 +182,34 @@ const styles = StyleSheet.create({
   // -- Compact (horizontal scroll) -------------------------------------------
   chipScrollContent: {
     paddingHorizontal: 24,
-    gap: 10,
+    gap: 8,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
     gap: 8,
     borderWidth: 1.5,
   },
   chipSelected: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderColor: COLORS.primary,
+    backgroundColor: '#0B0B0B',
+    borderColor: '#0B0B0B',
   },
   chipDefault: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
+    backgroundColor: '#F5F7FA',
+    borderColor: 'transparent',
   },
   chipLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   chipLabelSelected: {
-    color: COLORS.primary,
+    color: '#FFFFFF',
   },
   chipLabelDefault: {
-    color: COLORS.textSecondary,
+    color: '#8A8F98',
   },
 
   // -- Grid (full view) ------------------------------------------------------
@@ -224,17 +224,17 @@ const styles = StyleSheet.create({
     minWidth: 100,
     padding: 12,
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: 'center',
     position: 'relative',
   },
   gridCardSelected: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderColor: COLORS.primary,
+    backgroundColor: '#F5F7FA',
+    borderColor: '#0B0B0B',
   },
   gridCardDefault: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.borderLight,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EBEDF0',
   },
   checkBadge: {
     position: 'absolute',
@@ -243,17 +243,17 @@ const styles = StyleSheet.create({
   },
   gridLabel: {
     fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+    fontWeight: '600',
+    color: '#0B0B0B',
     marginTop: 8,
     textAlign: 'center',
   },
   gridLabelSelected: {
-    color: COLORS.primary,
+    color: '#0B0B0B',
   },
   gridDescription: {
     fontSize: 10,
-    color: COLORS.textMuted,
+    color: '#B8BCC4',
     textAlign: 'center',
     marginTop: 4,
     lineHeight: 13,

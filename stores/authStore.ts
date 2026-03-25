@@ -14,6 +14,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   fetchProfile: () => Promise<void>;
+  setPlan: (plan: 'free' | 'premium') => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -107,4 +108,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  setPlan: (plan: 'free' | 'premium') => {
+    const { user, session } = get();
+    if (user) {
+      set({ user: { ...user, plan } });
+    }
+    // Also persist to DB
+    if (session) {
+      supabase.from('profiles').update({ plan }).eq('id', session.user.id).then(() => {});
+    }
+  },
 }));
