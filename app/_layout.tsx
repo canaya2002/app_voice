@@ -9,7 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useIsDark } from '@/lib/constants';
-import { configurePurchases, checkPremiumEntitlement, onCustomerInfoUpdated } from '@/lib/purchases';
+import { configurePurchases, identifyUser, checkSubscriptionStatus, onCustomerInfoUpdated } from '@/lib/purchases';
+import { registerForPushNotifications } from '@/lib/notifications';
 import ToastProvider from '@/components/Toast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -37,20 +38,27 @@ export default function RootLayout() {
     initialize();
     useThemeStore.getState().initialize();
 
-    // Initialize RevenueCat and sync premium status
-    configurePurchases().then(() => {
-      checkPremiumEntitlement().then((isPremium) => {
-        const currentPlan = useAuthStore.getState().user?.plan;
-        if (isPremium && currentPlan !== 'premium') {
-          useAuthStore.getState().setPlan('premium');
-        }
-      });
+    // Initialize RevenueCat, identify user, and sync premium status
+    const userId = useAuthStore.getState().session?.user?.id;
+    configurePurchases(userId).then(async () => {
+      if (userId) await identifyUser(userId);
+      const status = await checkSubscriptionStatus();
+      const currentPlan = useAuthStore.getState().user?.plan;
+      if (status !== currentPlan) {
+        useAuthStore.getState().setPlan(status);
+      }
     });
 
     // Listen for entitlement changes (renewal, expiry, etc.)
     const unsubPurchases = onCustomerInfoUpdated((isPremium) => {
       useAuthStore.getState().setPlan(isPremium ? 'premium' : 'free');
     });
+
+    // Register for push notifications (non-blocking, after auth)
+    const currentUserId = useAuthStore.getState().session?.user?.id;
+    if (currentUserId) {
+      registerForPushNotifications(currentUserId).catch(() => {});
+    }
 
     AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
       const done = val === 'true';

@@ -69,10 +69,11 @@ export function useIsDark(): boolean {
 }
 
 export const LIMITS = {
-  FREE_DAILY_NOTES: 3,
+  FREE_DAILY_NOTES: 2,
   PREMIUM_DAILY_NOTES: Infinity,
   FREE_MAX_AUDIO_DURATION: 600,       // 10 min
   PREMIUM_MAX_AUDIO_DURATION: 1800,   // 30 min
+  PREMIUM_MAX_DAILY_AUDIO_MINUTES: 120, // 120 min/day cap for premium
   MAX_AUDIO_DURATION: 600,            // default (overridden by plan)
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   MAX_TRANSCRIPT_CHARS: 15000,

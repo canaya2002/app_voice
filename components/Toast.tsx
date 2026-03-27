@@ -43,6 +43,9 @@ function ToastItem({ message, onDone }: ToastItemProps) {
       }),
     ]).start();
 
+    // Error toasts stay longer so user can read them
+    const dismissDelay = message.type === 'error' ? 5000 : 3000;
+
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(translateY, {
@@ -56,7 +59,7 @@ function ToastItem({ message, onDone }: ToastItemProps) {
           useNativeDriver: true,
         }),
       ]).start(() => onDone(message.id));
-    }, 2500);
+    }, dismissDelay);
 
     return () => clearTimeout(timer);
   }, [translateY, opacity, message.id, onDone]);
@@ -85,7 +88,7 @@ export default function ToastProvider() {
   const [messages, setMessages] = useState<ToastMessage[]>([]);
 
   const handleMessage = useCallback((msg: ToastMessage) => {
-    setMessages((prev) => [...prev.slice(-2), msg]);
+    setMessages([msg]); // Max 1 toast visible at a time
   }, []);
 
   useEffect(() => {

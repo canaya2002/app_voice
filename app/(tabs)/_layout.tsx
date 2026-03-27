@@ -1,18 +1,26 @@
-import { useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   withSpring,
+  withTiming,
   useSharedValue,
+  Easing,
+  runOnJS,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import AnimatedPressable from '@/components/AnimatedPressable';
-import { COLORS, useThemeColors } from '@/lib/constants';
-import { shadows } from '@/lib/styles';
-import { selectionTap } from '@/lib/haptics';
+import { hapticTabSwitch } from '@/lib/haptics';
+import { COLORS, useThemeColors, useIsDark } from '@/lib/constants';
+
+// ---------------------------------------------------------------------------
+// Spring config — matches UIKit default spring
+// ---------------------------------------------------------------------------
+const TAB_SPRING = { mass: 0.6, damping: 15, stiffness: 200 };
 
 // ---------------------------------------------------------------------------
 // Tab config
@@ -32,7 +40,7 @@ const TAB_CONFIG: TabConfig[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Tab item (animated)
+// Tab item (animated with UIKit springs)
 // ---------------------------------------------------------------------------
 
 interface TabItemProps {
@@ -40,88 +48,193 @@ interface TabItemProps {
   config: TabConfig;
   onPress: () => void;
   onLongPress: () => void;
+  tintColor: string;
+  mutedColor: string;
 }
 
-function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
-  const scale = useSharedValue(focused ? 1 : 0);
-  scale.value = withSpring(focused ? 1 : 0, { damping: 20, stiffness: 300 });
+function TabItem({ focused, config, onPress, onLongPress, tintColor, mutedColor }: TabItemProps) {
+  const progress = useSharedValue(focused ? 1 : 0);
+  const scaleValue = useSharedValue(1);
 
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: scale.value,
-    transform: [{ scale: scale.value }],
+  useEffect(() => {
+    progress.value = withSpring(focused ? 1 : 0, TAB_SPRING);
+  }, [focused, progress]);
+
+  // Pill background
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: progress.value * 0.12,
+    transform: [
+      { scaleX: 0.8 + progress.value * 0.2 },
+      { scaleY: 0.8 + progress.value * 0.2 },
+    ],
   }));
 
+  // Icon scale
+  const iconContainerStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: 1 + progress.value * 0.1 },
+    ],
+  }));
+
+  // Label fade
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(focused ? 1 : 0, { duration: 150, easing: Easing.ease }),
+    transform: [
+      { translateY: withTiming(focused ? 0 : 4, { duration: 150, easing: Easing.ease }) },
+    ],
+  }));
+
+  // Press scale
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scaleValue.value }],
+  }));
+
+  const fireHaptic = () => hapticTabSwitch();
+  const firePress = () => onPress();
+
+  const gesture = Gesture.Tap()
+    .onBegin(() => {
+      scaleValue.value = withSpring(0.92, { damping: 20, stiffness: 400 });
+    })
+    .onFinalize((_e, success) => {
+      scaleValue.value = withSpring(1, TAB_SPRING);
+      if (success) {
+        runOnJS(fireHaptic)();
+        runOnJS(firePress)();
+      }
+    });
+
   return (
-    <AnimatedPressable
-      onPress={() => {
-        selectionTap();
-        onPress();
-      }}
-      style={styles.tabTouchable}
-      haptic={false}
-      scaleDown={0.92}
-      accessibilityLabel={config.label}
-    >
-      <View style={styles.tabInner}>
-        <Ionicons
-          name={focused ? config.iconFocused : config.iconDefault}
-          size={22}
-          color={focused ? COLORS.primary : COLORS.textMuted}
-        />
-        {focused && (
-          <Text style={styles.tabLabel}>{config.label}</Text>
-        )}
-        <Animated.View style={[styles.tabDot, dotStyle]} />
-      </View>
-    </AnimatedPressable>
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[styles.tabTouchable, pressStyle]}
+        accessibilityLabel={config.label}
+        accessibilityRole="button"
+      >
+        <View style={styles.tabInner}>
+          {/* Pill background */}
+          <Animated.View
+            style={[
+              styles.tabPill,
+              { backgroundColor: tintColor },
+              pillStyle,
+            ]}
+          />
+
+          {/* Icon */}
+          <Animated.View style={iconContainerStyle}>
+            <Ionicons
+              name={focused ? config.iconFocused : config.iconDefault}
+              size={24}
+              color={focused ? tintColor : mutedColor}
+            />
+          </Animated.View>
+
+          {/* Label */}
+          <Animated.Text
+            style={[
+              styles.tabLabel,
+              {
+                color: tintColor,
+                fontWeight: focused ? '500' : '400',
+              },
+              labelStyle,
+            ]}
+            numberOfLines={1}
+          >
+            {config.label}
+          </Animated.Text>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Custom tab bar
+// Custom tab bar with BlurView
 // ---------------------------------------------------------------------------
 
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const isDark = useIsDark();
+
+  const bottomMargin = Math.max(insets.bottom, 8) + 8;
 
   return (
-    <View style={[styles.tabBarOuter, { bottom: Math.max(insets.bottom, 8) + 8 }]}>
-      <View style={[styles.tabBarContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {state.routes.map((route, index) => {
-          const config = TAB_CONFIG.find((t) => t.name === route.name);
-          if (!config) return null;
+    <View style={[styles.tabBarOuter, { bottom: bottomMargin }]}>
+      <View style={styles.tabBarWrapper}>
+        {/* Blur background — iOS native, fallback for Android */}
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterial'}
+            intensity={80}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: isDark
+                  ? 'rgba(26, 26, 26, 0.85)'
+                  : 'rgba(255, 255, 255, 0.85)',
+              },
+            ]}
+          />
+        )}
 
-          const focused = state.index === index;
+        {/* Top border — 0.5px like iOS system separator */}
+        <View
+          style={[
+            styles.topBorder,
+            {
+              backgroundColor: isDark
+                ? 'rgba(255,255,255,0.15)'
+                : 'rgba(0,0,0,0.12)',
+            },
+          ]}
+        />
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
+        {/* Tab items */}
+        <View style={styles.tabBarContent}>
+          {state.routes.map((route, index) => {
+            const config = TAB_CONFIG.find((t) => t.name === route.name);
+            if (!config) return null;
 
-          const onLongPress = () => {
-            navigation.emit({
-              type: 'tabLongPress',
-              target: route.key,
-            });
-          };
+            const focused = state.index === index;
 
-          return (
-            <TabItem
-              key={route.key}
-              focused={focused}
-              config={config}
-              onPress={onPress}
-              onLongPress={onLongPress}
-            />
-          );
-        })}
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
+
+            const onLongPress = () => {
+              navigation.emit({
+                type: 'tabLongPress',
+                target: route.key,
+              });
+            };
+
+            return (
+              <TabItem
+                key={route.key}
+                focused={focused}
+                config={config}
+                onPress={onPress}
+                onLongPress={onLongPress}
+                tintColor={colors.primary}
+                mutedColor={colors.textMuted}
+              />
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -165,57 +278,70 @@ export default function TabLayout() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  // -- Tab bar container ------------------------------------------------------
+  // -- Tab bar container ---------------------------------------------------
   tabBarOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 16,
+    right: 16,
     alignItems: 'center',
     pointerEvents: 'box-none',
   },
-  tabBarContainer: {
+  tabBarWrapper: {
+    width: '100%',
+    height: 64,
+    borderRadius: 24,
+    overflow: 'hidden',
+    // Native iOS shadow — no elevation
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  topBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    zIndex: 1,
+  },
+  tabBarContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-    height: 60,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 16,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
   },
 
-  // -- Tab item ---------------------------------------------------------------
+  // -- Tab item ------------------------------------------------------------
   tabTouchable: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    height: '100%',
   },
   tabInner: {
-    width: 56,
-    height: 40,
-    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  tabPill: {
+    position: 'absolute',
+    width: 56,
+    height: 36,
+    borderRadius: 18,
   },
   tabLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: COLORS.primary,
+    fontSize: 10,
     marginTop: 2,
-  },
-  tabDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.primaryLight,
-    marginTop: 2,
+    // System font: undefined on iOS = SF Pro
+    fontFamily: undefined,
   },
 });

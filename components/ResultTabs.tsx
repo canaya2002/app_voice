@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/lib/constants';
-import { selectionTap, successTap } from '@/lib/haptics';
+import { hapticSelection, hapticTaskToggle, hapticCopyClipboard } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import type { Note } from '@/types';
 
@@ -253,7 +253,7 @@ export default function ResultTabs({ note }: ResultTabsProps) {
   const handleTabPress = useCallback(
     (key: TabKey) => {
       if (key === activeTab) return;
-      selectionTap();
+      hapticSelection();
       // fade out, switch, fade in
       Animated.timing(contentOpacity, {
         toValue: 0,
@@ -288,7 +288,7 @@ export default function ResultTabs({ note }: ResultTabsProps) {
 
   const toggleTask = useCallback(
     (index: number) => {
-      selectionTap();
+      hapticTaskToggle();
       setCheckedTasks((prev) => {
         const next = new Set(prev);
         if (next.has(index)) {
@@ -304,7 +304,7 @@ export default function ResultTabs({ note }: ResultTabsProps) {
 
   const copyPoint = useCallback(async (text: string) => {
     await Clipboard.setStringAsync(text);
-    successTap();
+    hapticCopyClipboard();
     showToast('Punto copiado', 'success');
   }, []);
 
@@ -312,7 +312,7 @@ export default function ResultTabs({ note }: ResultTabsProps) {
     const txt = note.clean_text || '';
     if (!txt) return;
     await Clipboard.setStringAsync(txt);
-    successTap();
+    hapticCopyClipboard();
     showToast('Texto copiado', 'success');
   }, [note.clean_text]);
 

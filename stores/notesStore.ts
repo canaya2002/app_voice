@@ -21,9 +21,14 @@ interface NotesState {
   updateSpeakers: (noteId: string, speakers: SpeakerInfo[]) => Promise<void>;
   subscribeToNote: (id: string) => () => void;
   subscribeToNotes: (userId: string) => () => void;
+  retryProcessing: (noteId: string) => Promise<boolean>;
+  pollNoteStatus: (id: string) => Promise<Note | null>;
   setCurrentNote: (note: Note | null) => void;
   clearError: () => void;
   reset: () => void;
+  /** Track active channel unsubscribers so logout can clean them all */
+  _activeUnsubs: Set<() => void>;
+  _registerUnsub: (unsub: () => void) => void;
 }
 
 function parseNote(row: Record<string, unknown>): Note {
@@ -37,6 +42,7 @@ function parseNote(row: Record<string, unknown>): Note {
     is_conversation: !!row.is_conversation,
     primary_mode: (row.primary_mode as Note['primary_mode']) ?? 'summary',
     template: row.template as Note['template'],
+    retry_count: typeof row.retry_count === 'number' ? row.retry_count : 0,
   };
 }
 
@@ -51,9 +57,12 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   fetchNotes: async () => {
     set({ loading: true, error: null });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) { set({ loading: false }); return; }
     const { data, error } = await supabase
       .from('notes')
       .select('*')
+      .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -199,7 +208,9 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const unsub = () => { supabase.removeChannel(channel); get()._activeUnsubs.delete(unsub); };
+    get()._registerUnsub(unsub);
+    return unsub;
   },
 
   subscribeToNotes: (userId: string) => {
@@ -212,10 +223,85 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const unsub = () => { supabase.removeChannel(channel); get()._activeUnsubs.delete(unsub); };
+    get()._registerUnsub(unsub);
+    return unsub;
+  },
+
+  retryProcessing: async (noteId: string): Promise<boolean> => {
+    const note = get().currentNote ?? get().notes.find((n) => n.id === noteId);
+    if (!note) { set({ error: 'Nota no encontrada.' }); return false; }
+    if (!note.audio_url) { set({ error: 'No hay audio para reprocesar.' }); return false; }
+    if (note.retry_count >= 2) {
+      set({ error: 'Se alcanzó el máximo de reintentos.' });
+      return false;
+    }
+
+    set({ loading: true, error: null });
+
+    // Reset note status to processing
+    await supabase.from('notes').update({ status: 'processing', error_message: null }).eq('id', noteId);
+    set((state) => ({
+      currentNote: state.currentNote?.id === noteId
+        ? { ...state.currentNote, status: 'processing', error_message: undefined }
+        : state.currentNote,
+    }));
+
+    try {
+      const { error: fnError } = await supabase.functions.invoke('process-audio', {
+        body: {
+          note_id: noteId,
+          audio_path: note.audio_url,
+          template: note.template ?? 'quick_idea',
+          primary_mode: note.primary_mode ?? 'summary',
+          is_retry: true,
+        },
+      });
+
+      set({ loading: false });
+      if (fnError) {
+        set({ error: 'Error al reintentar. Intenta más tarde.' });
+        return false;
+      }
+      return true;
+    } catch {
+      set({ loading: false, error: 'Error de red al reintentar.' });
+      return false;
+    }
+  },
+
+  pollNoteStatus: async (id: string): Promise<Note | null> => {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return null;
+    const note = parseNote(data as Record<string, unknown>);
+
+    // Update local state
+    set({ currentNote: note });
+    set((state) => ({
+      notes: state.notes.map((n) => (n.id === id ? note : n)),
+    }));
+
+    return note;
   },
 
   setCurrentNote: (note: Note | null) => set({ currentNote: note }),
   clearError: () => set({ error: null }),
-  reset: () => set({ notes: [], currentNote: null, modeResults: [], loading: false, converting: false, convertingMode: null, error: null }),
+
+  _activeUnsubs: new Set(),
+  _registerUnsub: (unsub: () => void) => { get()._activeUnsubs.add(unsub); },
+
+  reset: () => {
+    // Clean up all active realtime subscriptions
+    const unsubs = get()._activeUnsubs;
+    for (const unsub of unsubs) {
+      try { unsub(); } catch { /* ignore */ }
+    }
+    unsubs.clear();
+    set({ notes: [], currentNote: null, modeResults: [], loading: false, converting: false, convertingMode: null, error: null });
+  },
 }));

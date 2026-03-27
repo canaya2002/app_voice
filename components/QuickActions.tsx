@@ -7,7 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getModeConfig } from '@/lib/constants';
 import { cardEntry } from '@/lib/animations';
-import { lightTap } from '@/lib/haptics';
+import { hapticButtonPress } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import type { OutputMode, NoteTemplate } from '@/types';
 
@@ -59,7 +59,7 @@ function ActionCard({
   return (
     <AnimatedPressable
       onPress={() => {
-        lightTap();
+        hapticButtonPress();
         onPress(action.mode, action.template);
       }}
       style={styles.card}

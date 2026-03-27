@@ -7,6 +7,7 @@ import {
   Modal,
   StyleSheet,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
 } from 'react-native';
@@ -84,7 +85,7 @@ export default function SpeakerRenameModal({
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
-          onPress={onClose}
+          onPress={() => { Keyboard.dismiss(); onClose(); }}
           accessibilityLabel="Cerrar modal"
         />
 
@@ -104,7 +105,7 @@ export default function SpeakerRenameModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {speakers.map((speaker) => {
+            {speakers.map((speaker, speakerIndex) => {
               const color = getSpeakerColor(speaker.color);
               return (
                 <View key={speaker.id} style={styles.speakerRow}>
@@ -126,7 +127,9 @@ export default function SpeakerRenameModal({
                     placeholder={speaker.default_name}
                     placeholderTextColor={COLORS.textMuted}
                     autoCapitalize="words"
+                    autoFocus={speakerIndex === 0}
                     returnKeyType="done"
+                    onSubmitEditing={handleSave}
                     maxLength={30}
                   />
                 </View>

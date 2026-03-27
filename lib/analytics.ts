@@ -51,8 +51,10 @@ export type AnalyticsEvent =
   | 'upgrade_prompt_shown'
   | 'note_reopened'
   | 'task_revisited'
+  | 'data_exported'
   | 'app_opened'
-  | 'onboarding_completed';
+  | 'onboarding_completed'
+  | 'note_retry';
 
 type EventProperties = Record<string, string | number | boolean | null>;
 

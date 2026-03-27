@@ -13,8 +13,9 @@
       "bundleIdentifier": "com.sythio.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sythio necesita acceso al micrófono para transformar tu voz en resultados útiles y estructurados.",
-        "ITSAppUsesNonExemptEncryption": false
+        "NSMicrophoneUsageDescription": "Sythio usa el micrófono para grabar tus notas de voz, reuniones e ideas. El audio se procesa con IA para generar resúmenes, tareas y más.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["audio"]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -40,7 +41,13 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Sythio necesita acceso al micrófono para transformar tu voz en resultados útiles y estructurados."
+          "microphonePermission": "Sythio usa el micrófono para grabar tus notas de voz, reuniones e ideas. El audio se procesa con IA para generar resúmenes, tareas y más."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B0B0B"
         }
       ],
       [
@@ -49,7 +56,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#0B0B0B"
+          "backgroundColor": "#0A0A0F"
         }
       ]
     ],

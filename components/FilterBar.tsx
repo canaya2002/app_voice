@@ -1,7 +1,7 @@
 import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/lib/constants';
-import { selectionTap } from '@/lib/haptics';
+import { hapticSelection } from '@/lib/haptics';
 
 export type FilterOption = 'all' | 'meeting' | 'tasks' | 'ideas' | 'study' | 'conversations';
 
@@ -28,7 +28,7 @@ export default function FilterBar({ selected, onSelect }: FilterBarProps) {
           <TouchableOpacity
             key={f.id}
             style={[styles.chip, active && styles.chipActive]}
-            onPress={() => { selectionTap(); onSelect(f.id); }}
+            onPress={() => { hapticSelection(); onSelect(f.id); }}
             activeOpacity={0.7}
           >
             <Ionicons name={f.icon} size={14} color={active ? '#FFFFFF' : COLORS.textMuted} />

@@ -98,6 +98,8 @@ export async function stopRecording(): Promise<string | null> {
 
   await Audio.setAudioModeAsync({
     allowsRecordingIOS: false,
+    playsInSilentModeIOS: true,
+    staysActiveInBackground: false,
   });
 
   currentRecording = null;

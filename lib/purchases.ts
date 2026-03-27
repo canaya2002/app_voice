@@ -1,15 +1,31 @@
 /**
  * Sythio Purchases — RevenueCat integration.
  *
- * Handles subscription lifecycle: configure, purchase, restore, entitlement check.
+ * Handles the full subscription lifecycle:
+ *   configure → purchase → restore → entitlement check → sync with Supabase
  *
  * SETUP REQUIRED (outside code):
- * 1. Create a RevenueCat project at https://app.revenuecat.com
- * 2. Add iOS app with bundle ID com.sythio.app
- * 3. Create an entitlement called "premium"
- * 4. Create an offering with a monthly $4.99 package
- * 5. Set REVENUECAT_API_KEY below (or move to .env)
- * 6. Configure App Store Connect subscription in-app purchases
+ * ─────────────────────────────────────────────────────────────────────────────
+ * App Store Connect:
+ *   1. Go to Monetization > Subscriptions
+ *   2. Create subscription group "Sythio Premium"
+ *   3. Add product:
+ *      - Reference Name: "Sythio Premium Monthly"
+ *      - Product ID: com.sythio.app.premium.monthly
+ *      - Duration: 1 Month
+ *      - Price: $4.99
+ *      - Localization (es-MX): "Sythio Premium" / "Acceso completo a todos los modos"
+ *   4. Add introductory offer: Free Trial, 7 days
+ *   5. In App Store Connect > App > Subscriptions, add the product to your app
+ *
+ * RevenueCat Dashboard:
+ *   1. Create project at https://app.revenuecat.com
+ *   2. Add iOS app with bundle ID com.sythio.app
+ *   3. Connect App Store Connect via Shared Secret
+ *   4. Create entitlement "premium"
+ *   5. Create offering "default" with package "$rc_monthly" → your Apple product
+ *   6. Copy the iOS API key below
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import Purchases, {
@@ -17,6 +33,7 @@ import Purchases, {
   PurchasesPackage,
   CustomerInfo,
   LOG_LEVEL,
+  PURCHASES_ERROR_CODE,
 } from 'react-native-purchases';
 import { Platform } from 'react-native';
 import { track } from '@/lib/analytics';
@@ -40,9 +57,15 @@ let configured = false;
 
 /**
  * Initialize RevenueCat. Call once on app startup.
+ * Pass the Supabase user ID to link RevenueCat customer with your backend.
  */
 export async function configurePurchases(userId?: string): Promise<void> {
   if (configured) return;
+
+  if (REVENUECAT_IOS_KEY.includes('REPLACE')) {
+    if (__DEV__) console.warn('[purchases] RevenueCat API key not configured — skipping init');
+    return;
+  }
 
   if (__DEV__) {
     Purchases.setLogLevel(LOG_LEVEL.DEBUG);
@@ -54,6 +77,18 @@ export async function configurePurchases(userId?: string): Promise<void> {
   });
 
   configured = true;
+}
+
+/**
+ * Set the app user ID after login (links RevenueCat customer to Supabase user).
+ */
+export async function identifyUser(userId: string): Promise<void> {
+  if (!configured) return;
+  try {
+    await Purchases.logIn(userId);
+  } catch (err) {
+    if (__DEV__) console.warn('[purchases] identifyUser error:', err);
+  }
 }
 
 /**
@@ -80,7 +115,8 @@ export async function getMonthlyPackage(): Promise<PurchasesPackage | null> {
 }
 
 /**
- * Purchase a package. Returns customer info on success, null on cancel/failure.
+ * Purchase a package. Returns structured result.
+ * Handles cancellation silently — it's not an error.
  */
 export async function purchasePackage(
   pkg: PurchasesPackage,
@@ -97,13 +133,23 @@ export async function purchasePackage(
 
     return { success: isPremium, customerInfo };
   } catch (err: unknown) {
-    const error = err as { userCancelled?: boolean; message?: string };
+    const error = err as { userCancelled?: boolean; code?: string; message?: string };
+
     if (error.userCancelled) {
       track('purchase_cancelled', {});
       return { success: false, cancelled: true };
     }
+
+    // Map error codes to user-friendly messages
+    let message = error.message ?? 'Error desconocido';
+    if (error.code === String(PURCHASES_ERROR_CODE.NETWORK_ERROR)) {
+      message = 'Sin conexión. Verifica tu internet.';
+    } else if (error.code === String(PURCHASES_ERROR_CODE.PAYMENT_PENDING_ERROR)) {
+      message = 'Tu compra está siendo procesada.';
+    }
+
     track('purchase_failed', { error: error.message ?? 'unknown' });
-    return { success: false, error: error.message ?? 'Error desconocido' };
+    return { success: false, error: message };
   }
 }
 
@@ -137,6 +183,7 @@ export async function restorePurchases(): Promise<{
 
 /**
  * Check if user currently has premium entitlement.
+ * This is the source of truth — not profiles.plan.
  */
 export async function checkPremiumEntitlement(): Promise<boolean> {
   try {
@@ -145,6 +192,14 @@ export async function checkPremiumEntitlement(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Full subscription status check. Returns 'free' or 'premium'.
+ */
+export async function checkSubscriptionStatus(): Promise<'free' | 'premium'> {
+  const isPremium = await checkPremiumEntitlement();
+  return isPremium ? 'premium' : 'free';
 }
 
 /**

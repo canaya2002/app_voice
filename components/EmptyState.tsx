@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/lib/constants';
-import { lightTap } from '@/lib/haptics';
+import { hapticButtonPress } from '@/lib/haptics';
 
 interface EmptyStateProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -63,7 +63,7 @@ export default function EmptyState({
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => {
-            lightTap();
+            hapticButtonPress();
             onAction();
           }}
           activeOpacity={0.8}

@@ -24,9 +24,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS } from '@/lib/constants';
+import { COLORS, useIsDark, DARK_COLORS } from '@/lib/constants';
 import { shadows } from '@/lib/styles';
-import { lightTap, successTap } from '@/lib/haptics';
+import { hapticButtonPress, hapticProcessingDone } from '@/lib/haptics';
 import FloatingOrb from '@/components/FloatingOrb';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
@@ -289,8 +289,13 @@ const ILLUSTRATIONS: React.FC[] = [
 ];
 
 /* ── Main screen ───────────────────────────────────────── */
+const LIGHT_GRADIENT: [string, string, string] = ['#FAFAFA', '#F0F7FF', '#E8F4FF'];
+const DARK_GRADIENT: [string, string, string] = ['#0B0B0B', '#0D1117', '#101820'];
+
 export default function OnboardingScreen() {
   const { width, height: screenHeight } = useWindowDimensions();
+  const isDark = useIsDark();
+  const themeColors = isDark ? DARK_COLORS : COLORS;
   const scrollRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageHeight, setPageHeight] = useState(screenHeight * 0.55);
@@ -300,7 +305,7 @@ export default function OnboardingScreen() {
       const offsetX = e.nativeEvent.contentOffset.x;
       const page = Math.round(offsetX / width);
       if (page >= 0 && page < PAGES.length) {
-        if (page !== currentPage) lightTap();
+        if (page !== currentPage) hapticButtonPress();
         setCurrentPage(page);
       }
     },
@@ -309,7 +314,7 @@ export default function OnboardingScreen() {
 
   const handleNext = () => {
     if (currentPage < PAGES.length - 1) {
-      lightTap();
+      hapticButtonPress();
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
       scrollRef.current?.scrollTo({ x: nextPage * width, animated: true });
@@ -319,7 +324,7 @@ export default function OnboardingScreen() {
   };
 
   const handleComplete = async () => {
-    successTap();
+    hapticProcessingDone();
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
     if (__DEV__) console.log('[onboarding] flag saved, navigating to login');
     router.replace('/(auth)/login');
@@ -329,7 +334,7 @@ export default function OnboardingScreen() {
 
   return (
     <LinearGradient
-      colors={['#FAFAFA', '#F0F7FF', '#E8F4FF']}
+      colors={isDark ? DARK_GRADIENT : LIGHT_GRADIENT}
       style={styles.gradient}
     >
       <SafeAreaView style={styles.container}>
@@ -373,8 +378,8 @@ export default function OnboardingScreen() {
                   <View style={styles.illustrationWrapper}>
                     <Illustration />
                   </View>
-                  <Text style={styles.title}>{page.title}</Text>
-                  <Text style={styles.subtitle}>{page.subtitle}</Text>
+                  <Text style={[styles.title, { color: themeColors.textPrimary }]}>{page.title}</Text>
+                  <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{page.subtitle}</Text>
                 </View>
               );
             })}

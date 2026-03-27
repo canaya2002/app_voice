@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { PurchasesPackage } from 'react-native-purchases';
 import { COLORS } from '@/lib/constants';
 import { track } from '@/lib/analytics';
-import { lightTap, successTap, errorTap } from '@/lib/haptics';
+import { hapticButtonPress, hapticPurchaseSuccess, hapticPurchaseError, hapticPaywallOpen } from '@/lib/haptics';
 import { getMonthlyPackage, purchasePackage, restorePurchases } from '@/lib/purchases';
 import { useAuthStore } from '@/stores/authStore';
 import AnimatedPressable from '@/components/AnimatedPressable';
@@ -61,31 +61,31 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
     setLoading(false);
 
     if (result.success) {
-      successTap();
+      hapticPurchaseSuccess();
       setPlan('premium');
       showToast('¡Bienvenido a Sythio Premium!', 'success');
       onClose();
     } else if (result.cancelled) {
       // User cancelled — do nothing, stay on paywall
     } else {
-      errorTap();
+      hapticPurchaseError();
       showToast(result.error ?? 'Error al procesar la compra', 'error');
     }
   };
 
   const handleRestore = async () => {
     setRestoring(true);
-    lightTap();
+    hapticButtonPress();
     const result = await restorePurchases();
     setRestoring(false);
 
     if (result.success) {
-      successTap();
+      hapticPurchaseSuccess();
       setPlan('premium');
       showToast('¡Suscripción restaurada!', 'success');
       onClose();
     } else if (result.error) {
-      errorTap();
+      hapticPurchaseError();
       showToast(result.error, 'error');
     } else {
       showToast('No se encontraron compras previas', 'info');
@@ -99,6 +99,8 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
 
   // Price from RevenueCat or fallback
   const priceLabel = pkg?.product?.priceString ?? '$4.99';
+  const introOffer = pkg?.product?.introPrice;
+  const hasFreeTrial = introOffer && introOffer.price === 0;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
@@ -139,12 +141,19 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
               </View>
             ) : (
               <View style={styles.pricingCard}>
+                {hasFreeTrial && (
+                  <View style={styles.trialBadge}>
+                    <Text style={styles.trialBadgeText}>7 días gratis</Text>
+                  </View>
+                )}
                 <Text style={styles.pricingLabel}>Mensual</Text>
                 <View style={styles.pricingRow}>
                   <Text style={styles.pricingAmount}>{priceLabel}</Text>
                   <Text style={styles.pricingPeriod}>/mes</Text>
                 </View>
-                <Text style={styles.pricingNote}>Cancela cuando quieras</Text>
+                <Text style={styles.pricingNote}>
+                  {hasFreeTrial ? 'Prueba gratis, luego cancela cuando quieras' : 'Cancela cuando quieras'}
+                </Text>
               </View>
             )}
 
@@ -200,6 +209,8 @@ const styles = StyleSheet.create({
   benefitText: { flex: 1 },
   benefitTitle: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },
   benefitDesc: { fontSize: 13, color: COLORS.textSecondary, marginTop: 1 },
+  trialBadge: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, marginBottom: 8 },
+  trialBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   pricingCard: { alignItems: 'center', backgroundColor: COLORS.surfaceAlt, borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 2, borderColor: COLORS.primaryLight, minHeight: 80, justifyContent: 'center' },
   pricingLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 },
   pricingRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },

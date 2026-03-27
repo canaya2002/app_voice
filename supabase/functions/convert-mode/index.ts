@@ -9,107 +9,162 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const MAX_TRANSCRIPT_CHARS = 15000;
 const API_TIMEOUT_MS = 120_000;
+const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
-// Import prompts inline (Edge Functions can't import from app code)
-function buildModePrompt(
-  mode: string,
-  transcript: string,
-  speakerInstr: string,
-  templateInstr: string,
-  tone?: string
-): string {
-  const ctx = `${speakerInstr}\n${templateInstr}`.trim();
-  const t = transcript.length > MAX_TRANSCRIPT_CHARS
-    ? transcript.slice(0, MAX_TRANSCRIPT_CHARS) + "\n[Transcripción truncada]"
-    : transcript;
+// ── Free-tier mode allowlist ──────────────────────────────────────────────
+const FREE_MODES = ["summary", "tasks", "clean_text", "ideas"];
+
+// ── Rate limit config ──────────────────────────────────────────────────────
+const DAILY_CONVERT_LIMITS = { free: 20, premium: Infinity };
+const IP_RATE_LIMIT = 10;
+const IP_RATE_WINDOW_MS = 60_000;
+
+// ── Max tokens per mode ────────────────────────────────────────────────────
+const MODE_MAX_TOKENS: Record<string, number> = {
+  summary: 900, tasks: 1100, action_plan: 1100, clean_text: 1300,
+  executive_report: 1300, ready_message: 700, study: 1100, ideas: 900,
+};
+
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+
+function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+    return { allowed: true, retryAfter: 0 };
+  }
+  entry.count++;
+  if (entry.count > IP_RATE_LIMIT) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  return { allowed: true, retryAfter: 0 };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of ipHits) {
+    if (now >= entry.resetAt) ipHits.delete(ip);
+  }
+}, 5 * 60_000);
+
+function rateLimitResponse(message: string, limitType: "daily" | "per_minute", retryAfter: number | null, cors: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({ error: "rate_limit_exceeded", message, retry_after: retryAfter, limit_type: limitType }),
+    { status: 429, headers: { ...cors, "Content-Type": "application/json", ...(retryAfter != null ? { "Retry-After": String(retryAfter) } : {}) } },
+  );
+}
+
+/** Compress transcript for prompts — reduces tokens without losing meaning */
+function compressTranscript(text: string): string {
+  return text
+    .replace(/\s{2,}/g, " ")
+    .replace(/([.!?,;])\s+/g, "$1 ")
+    .replace(/\b(\w+)( \1){2,}/gi, "$1")
+    .trim();
+}
+
+function buildModePrompt(mode: string, transcript: string, speakerInstr: string, templateInstr: string, tone?: string): string {
+  const ctx = [speakerInstr, templateInstr].filter(Boolean).join(" ");
+  const compressed = compressTranscript(transcript);
+  const t = compressed.length > MAX_TRANSCRIPT_CHARS ? compressed.slice(0, MAX_TRANSCRIPT_CHARS) + "\n[Truncado]" : compressed;
 
   const prompts: Record<string, string> = {
-    summary: `Analiza esta transcripción y genera un resumen ejecutivo.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título corto","summary":"resumen de 3-5 oraciones","key_points":[],"topics":[],"speaker_highlights":[]}`,
-    tasks: `Extrae TODAS las tareas de esta transcripción.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","tasks":[{"text":"tarea","priority":"medium","responsible":null,"deadline_hint":null,"source_quote":"","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
-    action_plan: `Convierte esta transcripción en un plan de acción.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","objective":"objetivo","steps":[{"order":1,"action":"qué hacer","responsible":null,"depends_on":null,"estimated_effort":"bajo"}],"obstacles":[],"next_immediate_step":"lo primero","success_criteria":"criterio"}`,
-    clean_text: `Reescribe esta transcripción como texto limpio y profesional.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","clean_text":"texto reescrito","format":"narrative","word_count":0}`,
-    executive_report: `Genera un reporte ejecutivo profesional.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","context":"contexto","executive_summary":"resumen","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
-    ready_message: `Convierte esta transcripción en mensajes listos para enviar.\nTono preferido: ${tone || "professional"}\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"","context_note":""}`,
-    study: `Convierte esta transcripción en material de estudio.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"título","summary":"resumen","key_concepts":[{"concept":"","explanation":""}],"review_points":[],"probable_questions":[{"question":"","answer_hint":""}],"mnemonics":[],"connections":[]}`,
-    ideas: `Analiza esta transcripción como exploración de ideas.\n${ctx}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON válido, sin markdown ni backticks:\n{"title_suggestion":"nombre","core_idea":"idea central","opportunities":[{"opportunity":"","potential":"alto"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"","structured_version":""}`,
+    summary: `Extrae un resumen ejecutivo.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título 6-8 palabras","summary":"resumen 3-5 oraciones","key_points":["punto"],"topics":["tema"],"speaker_highlights":[]}`,
+    tasks: `Extrae TODAS las tareas.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","tasks":[{"text":"tarea","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"frase","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
+    action_plan: `Convierte en plan de acción.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","objective":"objetivo","steps":[{"order":1,"action":"qué hacer","responsible":null,"depends_on":null,"estimated_effort":"bajo|medio|alto"}],"obstacles":[],"next_immediate_step":"primero","success_criteria":"criterio"}`,
+    clean_text: `Reescribe como texto limpio y profesional.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","clean_text":"texto reescrito sin muletillas","format":"narrative","word_count":0}`,
+    executive_report: `Genera reporte ejecutivo.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","context":"contexto","executive_summary":"resumen","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
+    ready_message: `Genera mensajes listos para enviar. Tono preferido: ${tone || "professional"}.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"asunto","context_note":"destinatario"}`,
+    study: `Convierte en material de estudio.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","summary":"resumen","key_concepts":[{"concept":"nombre","explanation":"explicación"}],"review_points":[],"probable_questions":[{"question":"pregunta","answer_hint":"pista"}],"mnemonics":[],"connections":[]}`,
+    ideas: `Analiza como exploración de ideas.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"nombre","core_idea":"idea central","opportunities":[{"opportunity":"oportunidad","potential":"alto|medio|bajo"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"paso","structured_version":"idea organizada"}`,
   };
   return prompts[mode] || prompts["summary"];
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 serve(async (req: Request) => {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Método no permitido" }), { status: 405, headers: { "Content-Type": "application/json" } });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return new Response(JSON.stringify({ error: "Método no permitido" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown";
+  const ipCheck = checkIpRateLimit(clientIp);
+  if (!ipCheck.allowed) return rateLimitResponse("Demasiadas solicitudes.", "per_minute", ipCheck.retryAfter, corsHeaders);
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers: { "Content-Type": "application/json" } });
-  }
+  if (!authHeader) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
   const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: "Sesión inválida" }), { status: 401, headers: { "Content-Type": "application/json" } });
-  }
+  if (authError || !user) return new Response(JSON.stringify({ error: "Sesión inválida" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch {
-    return new Response(JSON.stringify({ error: "Body inválido" }), { status: 400, headers: { "Content-Type": "application/json" } });
-  }
+  try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Body inválido" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 
   const note_id = body.note_id as string | undefined;
   const target_mode = body.target_mode as string | undefined;
   const tone = body.tone as string | undefined;
-
-  if (!note_id || typeof note_id !== "string" || !target_mode || typeof target_mode !== "string") {
-    return new Response(JSON.stringify({ error: "Parámetros inválidos" }), { status: 400, headers: { "Content-Type": "application/json" } });
-  }
+  if (!note_id || !target_mode) return new Response(JSON.stringify({ error: "Parámetros inválidos" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Verify ownership + fetch note
   const { data: note } = await admin.from("notes").select("*").eq("id", note_id).single();
-  if (!note || note.user_id !== user.id) {
-    return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { "Content-Type": "application/json" } });
+  if (!note || note.user_id !== user.id) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  // ── Mode gate ──
+  const { data: profile } = await admin.from("profiles").select("plan, daily_count, last_reset_date").eq("id", user.id).single();
+  const plan = profile?.plan || "free";
+
+  if (plan === "free" && !FREE_MODES.includes(target_mode)) {
+    return new Response(
+      JSON.stringify({ error: "gate_exceeded", gate: "requires_premium", message: "Este modo requiere Premium." }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 
-  // Check if already generated
-  const { data: existing } = await admin.from("mode_results")
-    .select("*")
-    .eq("note_id", note_id)
-    .eq("mode", target_mode)
-    .maybeSingle();
+  // ── Cache check ──
+  const { data: existing } = await admin.from("mode_results").select("*").eq("note_id", note_id).eq("mode", target_mode).maybeSingle();
+  if (existing) return new Response(JSON.stringify({ success: true, result: existing }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  if (existing) {
-    return new Response(JSON.stringify({ success: true, result: existing }), { headers: { "Content-Type": "application/json" } });
+  // ── Daily convert rate limit ──
+  const dailyMax = DAILY_CONVERT_LIMITS[plan as keyof typeof DAILY_CONVERT_LIMITS] ?? DAILY_CONVERT_LIMITS.free;
+  if (dailyMax !== Infinity) {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const { data: userNotes } = await admin.from("notes").select("id").eq("user_id", user.id);
+    const noteIds = (userNotes || []).map((n: { id: string }) => n.id);
+    let todayConversions = 0;
+    if (noteIds.length > 0) {
+      const { count } = await admin.from("mode_results").select("id", { count: "exact", head: true }).in("note_id", noteIds).gte("created_at", todayStart.toISOString());
+      todayConversions = count ?? 0;
+    }
+    if (todayConversions >= dailyMax) {
+      return rateLimitResponse(`Límite de ${dailyMax} reconversiones diarias alcanzado.`, "daily", null, corsHeaders);
+    }
   }
 
+  // ── Generate ──
   try {
     const isConversation = !!note.is_conversation;
     const speakersDetected = note.speakers_detected || 1;
     const speakers = (note.speakers || []) as Array<{ default_name: string; custom_name?: string }>;
-    const speakerNames = speakers.map(s => s.custom_name || s.default_name);
+    const speakerNames = speakers.map((s: { default_name: string; custom_name?: string }) => s.custom_name || s.default_name);
 
     const speakerInstr = isConversation
-      ? `Este audio es una conversación entre ${speakersDetected} personas: ${speakerNames.join(", ")}. Atribuye declaraciones y tareas a personas específicas.`
-      : "Este audio es de una sola persona hablando.";
+      ? `Conversación entre ${speakersDetected} personas: ${speakerNames.join(", ")}. Atribuye a cada persona.`
+      : "";
 
     const templateContexts: Record<string, string> = {
-      meeting: "Grabación de reunión. Prioriza acuerdos y pendientes.",
-      client: "Conversación con cliente. Prioriza compromisos.",
-      class: "Clase o conferencia. Prioriza conceptos.",
-      brainstorm: "Sesión de brainstorming. Prioriza ideas.",
-      quick_idea: "Idea rápida.",
-      task: "Descripción de tareas.",
-      journal: "Diario personal.",
-      followup: "Seguimiento.",
-      reflection: "Reflexión.",
+      meeting: "Reunión.", client: "Cliente.", class: "Clase.", brainstorm: "Brainstorming.",
+      quick_idea: "Idea rápida.", task: "Tareas.", journal: "Diario.", followup: "Seguimiento.", reflection: "Reflexión.",
     };
     const templateInstr = templateContexts[note.template || ""] || "";
 
     const prompt = buildModePrompt(target_mode, note.transcript || "", speakerInstr, templateInstr, tone);
+    const maxTok = MODE_MAX_TOKENS[target_mode] || 900;
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
@@ -118,42 +173,25 @@ serve(async (req: Request) => {
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 3000,
-          messages: [{ role: "user", content: prompt }],
-        }),
+        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: HAIKU_MODEL, max_tokens: maxTok, messages: [{ role: "user", content: prompt }] }),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error("LLM error");
       const data = await res.json();
       resultText = data.content[0].text;
-    } finally {
-      clearTimeout(timer);
-    }
+    } finally { clearTimeout(timer); }
 
     let modeResult: Record<string, unknown>;
     try {
       const cleaned = resultText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       modeResult = JSON.parse(cleaned);
-    } catch {
-      modeResult = { error: "No se pudo procesar el resultado" };
-    }
+    } catch { modeResult = { error: "No se pudo procesar el resultado" }; }
 
-    const { data: saved } = await admin.from("mode_results").insert({
-      note_id,
-      mode: target_mode,
-      result: modeResult,
-      tone: tone || null,
-    }).select().single();
+    const { data: saved } = await admin.from("mode_results").insert({ note_id, mode: target_mode, result: modeResult, tone: tone || null }).select().single();
 
-    return new Response(JSON.stringify({ success: true, result: saved }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, result: saved }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch {
-    return new Response(JSON.stringify({ error: "Error al convertir. Intenta de nuevo." }), { status: 500, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Error al convertir. Intenta de nuevo." }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

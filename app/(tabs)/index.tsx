@@ -34,10 +34,13 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNotesStore } from '@/stores/notesStore';
 import { useRecordingStore } from '@/stores/recordingStore';
 import { uploadAudioAndProcess } from '@/lib/transcription';
+import { watchNoteProcessing, type ProcessingCallbacks } from '@/lib/processing-watcher';
 import { supabase } from '@/lib/supabase';
 import { showToast } from '@/components/Toast';
-import { lightTap } from '@/lib/haptics';
+import { hapticButtonPress } from '@/lib/haptics';
 import { track } from '@/lib/analytics';
+import { canCreateNote, getRemainingNotes } from '@/lib/gates';
+import { DailyLimitBanner } from '@/components/StateViews';
 import Paywall from '@/components/Paywall';
 import type { OutputMode, NoteTemplate } from '@/types';
 
@@ -60,6 +63,13 @@ export default function HomeScreen() {
   const [uploading, setUploading] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [watcherHandle, setWatcherHandle] = useState<{ cancel: () => void } | null>(null);
+
+  // Cleanup watcher on unmount
+  useEffect(() => {
+    return () => { watcherHandle?.cancel(); };
+  }, [watcherHandle]);
 
   const motivational = MOTIVATIONAL[Math.floor(Date.now() / 86400000) % MOTIVATIONAL.length];
   const recentNotes = notes.slice(0, 3);
@@ -133,29 +143,39 @@ export default function HomeScreen() {
     setLastAudioUri(audioUri);
     setProcessingStatus('uploading');
     setProcessingError('');
+    setProcessingElapsed(0);
     track('processing_started', { note_id: noteId, template: selectedTemplate, mode: selectedMode });
 
-    const unsubscribe = subscribeToNote(noteId);
-    const channel = supabase.channel(`status-${noteId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: `id=eq.${noteId}` },
-        (payload) => {
-          const newStatus = (payload.new as { status: string }).status;
-          setProcessingStatus(newStatus);
-          if (newStatus === 'error') {
-            setProcessingError((payload.new as { error_message?: string }).error_message ?? 'Error desconocido');
-            supabase.removeChannel(channel);
-            unsubscribe();
-          }
-        }
-      ).subscribe();
+    // Cancel any previous watcher
+    watcherHandle?.cancel();
+
+    // Start the realtime + polling watcher
+    const handle = watchNoteProcessing(noteId, {
+      onStatusChange: (status, errorMessage) => {
+        setProcessingStatus(status);
+        if (errorMessage) setProcessingError(errorMessage);
+      },
+      onComplete: () => {
+        setProcessingStatus('done');
+        track('processing_completed', { note_id: noteId });
+      },
+      onError: (errorMessage) => {
+        setProcessingStatus('error');
+        setProcessingError(errorMessage);
+        track('processing_error', { note_id: noteId, error: errorMessage });
+      },
+      onElapsedUpdate: (seconds) => {
+        setProcessingElapsed(seconds);
+      },
+    });
+    setWatcherHandle(handle);
 
     try {
       await uploadAudioAndProcess(noteId, audioUri, user.id, selectedTemplate, selectedMode);
     } catch (err) {
+      handle.cancel();
       setProcessingStatus('error');
       setProcessingError(err instanceof Error ? err.message : 'Error al procesar');
-      supabase.removeChannel(channel);
-      unsubscribe();
     }
   };
 
@@ -183,7 +203,7 @@ export default function HomeScreen() {
 
   const handleUploadFile = async () => {
     if (!user) return;
-    lightTap();
+    hapticButtonPress();
     const canProceed = await checkDailyLimit();
     if (!canProceed) return;
     try {
@@ -208,8 +228,22 @@ export default function HomeScreen() {
 
   const dailyRemaining = user ? Math.max(0, LIMITS.FREE_DAILY_NOTES - user.daily_count) : 0;
 
+  const handleCancelProcessing = useCallback(() => {
+    watcherHandle?.cancel();
+    setWatcherHandle(null);
+    setProcessingNoteId(null);
+    setProcessingStatus('');
+    setProcessingError('');
+    setProcessingElapsed(0);
+    showToast('Procesamiento cancelado', 'info');
+  }, [watcherHandle]);
+
   // Processing state
   if (processingNoteId) {
+    const elapsedMin = Math.floor(processingElapsed / 60);
+    const elapsedSec = processingElapsed % 60;
+    const elapsedStr = `${elapsedMin}:${elapsedSec.toString().padStart(2, '0')}`;
+
     return (
       <SafeAreaView style={styles.container}>
         <LoadingProcessor
@@ -224,6 +258,20 @@ export default function HomeScreen() {
           }}
           onComplete={handleProcessingComplete}
         />
+        {/* Elapsed time + hints */}
+        {processingStatus !== 'done' && processingStatus !== 'error' && (
+          <View style={styles.processingFooter}>
+            <Text style={styles.elapsedText}>Procesando... {elapsedStr}</Text>
+            {processingElapsed > 60 && (
+              <Text style={styles.slowHint}>
+                Esto está tardando más de lo normal. Puedes cerrar la app, te notificaremos cuando esté listo.
+              </Text>
+            )}
+            <TouchableOpacity onPress={handleCancelProcessing} style={styles.cancelButton}>
+              <Text style={styles.cancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -274,6 +322,11 @@ export default function HomeScreen() {
           </AnimatedPressable>
         </Animated.View>
 
+        {/* Daily limit banner */}
+        {user && !canCreateNote(user).allowed && (
+          <DailyLimitBanner onUpgrade={() => setShowPaywall(true)} />
+        )}
+
         {/* Record button */}
         <View style={styles.recordSection}>
           {/* Outer animated ring */}
@@ -281,7 +334,13 @@ export default function HomeScreen() {
           {/* Main button */}
           <AnimatedPressable
             scaleDown={0.92}
-            onPress={() => setShowRecorder(true)}
+            onPress={() => {
+              if (user && !canCreateNote(user).allowed) {
+                setShowPaywall(true);
+                return;
+              }
+              setShowRecorder(true);
+            }}
             style={styles.recordButtonPressable}
           >
             <View style={styles.bigRecordButton}>
@@ -621,6 +680,41 @@ const styles = StyleSheet.create({
   uploadText: {
     fontSize: 14,
     color: COLORS.primaryLight,
+    fontWeight: '500',
+  },
+
+  // Processing footer
+  processingFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    paddingTop: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  elapsedText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  slowHint: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 16,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    marginTop: 4,
+  },
+  cancelText: {
+    fontSize: 14,
+    color: COLORS.error,
     fontWeight: '500',
   },
 });

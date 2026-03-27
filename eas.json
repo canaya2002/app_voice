@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -8,27 +9,38 @@
       "distribution": "internal",
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_DEV_PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_DEV_ANON_KEY"
       }
     },
     "preview": {
       "distribution": "internal",
       "ios": {
-        "simulator": false
-      }
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PROD_PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_PROD_ANON_KEY"
+      },
+      "autoIncrement": true
     },
     "production": {
       "ios": {
+        "buildConfiguration": "Release",
         "autoIncrement": true
       },
-      "android": {
-        "autoIncrement": true
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PROD_PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_PROD_ANON_KEY"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID",
+        "appleId": "YOUR_APPLE_ID@email.com",
         "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
         "appleTeamId": "YOUR_TEAM_ID"
       }

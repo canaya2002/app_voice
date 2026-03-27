@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/lib/constants';
 import { formatDuration } from '@/lib/audio';
-import { selectionTap } from '@/lib/haptics';
+import { hapticSelection } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
 interface AudioPlayerProps {
@@ -71,7 +71,7 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
 
   const loadAndPlay = async () => {
     try {
-      selectionTap();
+      hapticSelection();
       if (soundRef.current) {
         const status = await soundRef.current.getStatusAsync();
         if (status.isLoaded) {
@@ -116,7 +116,7 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
   };
 
   const toggleSpeed = useCallback(async () => {
-    selectionTap();
+    hapticSelection();
     const nextIndex = (speedIndex + 1) % SPEEDS.length;
     setSpeedIndex(nextIndex);
     if (soundRef.current) {

@@ -67,6 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         created_at: data.created_at,
         plan: data.plan,
         daily_count: data.daily_count,
+        daily_audio_minutes: data.daily_audio_minutes ?? 0,
         last_reset_date: data.last_reset_date,
       },
     });

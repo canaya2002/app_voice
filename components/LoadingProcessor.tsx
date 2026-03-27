@@ -17,7 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/lib/constants';
-import { successTap, errorTap } from '@/lib/haptics';
+import { hapticProcessingDone, hapticError } from '@/lib/haptics';
 import FloatingOrb from '@/components/FloatingOrb';
 
 interface LoadingProcessorProps {
@@ -131,11 +131,11 @@ export default function LoadingProcessor({ status, errorMessage, onRetry, onComp
   // Done: haptic + auto-nav
   useEffect(() => {
     if (status === 'done') {
-      successTap();
+      hapticProcessingDone();
       const timer = setTimeout(() => onComplete?.(), 1500);
       return () => clearTimeout(timer);
     }
-    if (status === 'error') errorTap();
+    if (status === 'error') hapticError();
   }, [status, onComplete]);
 
   // Timeout: if stuck for 2 minutes, show soft timeout hint

@@ -6,6 +6,7 @@ export interface User {
   created_at: string;
   plan: 'free' | 'premium';
   daily_count: number;
+  daily_audio_minutes: number;
   last_reset_date: string;
 }
 
@@ -76,6 +77,7 @@ export interface Note {
   speakers: SpeakerInfo[];
   primary_mode: OutputMode;
   template?: NoteTemplate;
+  retry_count: number;
 }
 
 // ── Mode Results ──────────────────────────────────────────────────────────────

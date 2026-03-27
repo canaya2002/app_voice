@@ -23,7 +23,7 @@ import { NoteCardSkeletonList } from '@/components/Skeleton';
 import { useNotesStore } from '@/stores/notesStore';
 import { useAuthStore } from '@/stores/authStore';
 import { showToast } from '@/components/Toast';
-import { selectionTap } from '@/lib/haptics';
+import { hapticSelection } from '@/lib/haptics';
 import type { Note } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ export default function HistoryScreen() {
             return (
               <AnimatedPressable
                 key={f.id}
-                onPress={() => { selectionTap(); setFilter(f.id); }}
+                onPress={() => { hapticSelection(); setFilter(f.id); }}
                 style={[
                   styles.chip,
                   active ? styles.chipActive : styles.chipInactive,
@@ -193,7 +193,7 @@ export default function HistoryScreen() {
             return (
               <AnimatedPressable
                 key={tf.id}
-                onPress={() => { selectionTap(); setTimeFilter(tf.id); }}
+                onPress={() => { hapticSelection(); setTimeFilter(tf.id); }}
                 style={[styles.timeChip, active && styles.timeChipActive]}
               >
                 <Text style={[styles.timeChipText, active && styles.timeChipTextActive]}>

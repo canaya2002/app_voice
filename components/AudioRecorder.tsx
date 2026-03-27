@@ -31,7 +31,7 @@ import {
   formatDuration,
 } from '@/lib/audio';
 import { useRecordingStore } from '@/stores/recordingStore';
-import { lightTap, selectionTap, mediumTap, errorTap } from '@/lib/haptics';
+import { hapticRecordStart, hapticRecordPause, hapticRecordResume, hapticRecordStop, hapticError } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
 const NUM_BARS = 40;
@@ -99,7 +99,7 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
 
   // Handlers
   const handleStop = useCallback(async () => {
-    mediumTap();
+    hapticRecordStop();
     const uri = await stopRecording();
     const finalDuration = durationRef.current;
     recordingRef.current = null;
@@ -117,7 +117,7 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
       Alert.alert('Límite alcanzado', 'La grabación máxima es de 10 minutos.');
     } else if (duration >= WARNING_THRESHOLD && isRecording && !warnedRef.current) {
       warnedRef.current = true;
-      errorTap();
+      hapticError();
     }
   }, [duration, isRecording, handleStop, WARNING_THRESHOLD]);
 
@@ -125,7 +125,7 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
     const hasPermission = await requestAudioPermissions();
     if (!hasPermission) return;
     try {
-      lightTap();
+      hapticRecordStart();
       const recording = await startRecording(
         (level) => addMetering(level),
         (seconds) => setDuration(seconds)
@@ -138,9 +138,8 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
   };
 
   const handlePause = async () => {
-    selectionTap();
-    if (isPaused) { await resumeRecording(); setPaused(false); }
-    else { await pauseRecording(); setPaused(true); }
+    if (isPaused) { hapticRecordResume(); await resumeRecording(); setPaused(false); }
+    else { hapticRecordPause(); await pauseRecording(); setPaused(true); }
   };
 
   const bars = useMemo(() => {

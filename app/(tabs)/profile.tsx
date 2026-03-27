@@ -1,8 +1,22 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  Modal,
+  Linking,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated from 'react-native-reanimated';
+import * as Clipboard from 'expo-clipboard';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { COLORS, LIMITS, useThemeColors } from '@/lib/constants';
 import { useThemeStore } from '@/stores/themeStore';
 import { track } from '@/lib/analytics';
@@ -14,8 +28,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNotesStore } from '@/stores/notesStore';
 import { supabase } from '@/lib/supabase';
 import { showToast } from '@/components/Toast';
-import { lightTap, errorTap } from '@/lib/haptics';
+import { hapticButtonPress, hapticError, hapticPaywallOpen, hapticExportSuccess, hapticCopyClipboard } from '@/lib/haptics';
 import { formatDurationLong } from '@/lib/audio';
+
+const PRIVACY_URL = 'https://sythio.com/privacy';
+const TERMS_URL = 'https://sythio.com/terms';
+const SUPPORT_EMAIL = 'soporte@sythio.com';
 
 // ---------------------------------------------------------------------------
 // Stats card config
@@ -44,11 +62,15 @@ export default function ProfileScreen() {
   const colors = useThemeColors();
   const { preference, setPreference } = useThemeStore();
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { user, logout } = useAuthStore();
   const { notes } = useNotesStore();
 
   const handleLogout = () => {
-    lightTap();
+    hapticButtonPress();
     Alert.alert('Cerrar sesión', '¿Estás seguro que quieres salir?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -63,30 +85,88 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAccount = () => {
-    errorTap();
+    hapticError();
     Alert.alert(
       'Eliminar cuenta',
-      'Esta acción es irreversible. Se eliminarán todos tus datos.',
+      'Esta acción es permanente. Se eliminarán todas tus notas, grabaciones y datos. No se puede deshacer.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase.rpc('delete_user');
-              if (error) {
-                showToast('No se pudo eliminar la cuenta', 'error');
-                return;
-              }
-              await logout();
-            } catch {
-              showToast('Error al eliminar cuenta', 'error');
-            }
+          onPress: () => {
+            setDeleteConfirmText('');
+            setShowDeleteModal(true);
           },
         },
-      ]
+      ],
     );
+  };
+
+  const executeDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.rpc('delete_user');
+      if (error) {
+        hapticError();
+        Alert.alert(
+          'No pudimos eliminar tu cuenta',
+          `Por favor contacta soporte en ${SUPPORT_EMAIL}`,
+          [
+            { text: 'Copiar email', onPress: () => { Clipboard.setStringAsync(SUPPORT_EMAIL); hapticCopyClipboard(); } },
+            { text: 'OK' },
+          ],
+        );
+        setDeleting(false);
+        return;
+      }
+      setShowDeleteModal(false);
+      await logout();
+    } catch {
+      hapticError();
+      showToast('Error al eliminar cuenta', 'error');
+      setDeleting(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        email: user?.email,
+        plan: user?.plan,
+        totalNotes: notes.length,
+        notes: notes.map((n) => ({
+          id: n.id,
+          title: n.title,
+          transcript: n.transcript,
+          summary: n.summary,
+          key_points: n.key_points,
+          tasks: n.tasks,
+          clean_text: n.clean_text,
+          primary_mode: n.primary_mode,
+          audio_duration: n.audio_duration,
+          speakers_detected: n.speakers_detected,
+          is_conversation: n.is_conversation,
+          status: n.status,
+          created_at: n.created_at,
+        })),
+      };
+      const json = JSON.stringify(exportData, null, 2);
+      const date = new Date().toISOString().split('T')[0];
+      const file = new File(Paths.cache, `sythio-datos-${date}.json`);
+      await file.text(); // ensure path exists
+      file.create();
+      await file.write(json);
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/json' });
+      hapticExportSuccess();
+      track('data_exported', { notes_count: notes.length });
+    } catch {
+      showToast('Error al exportar datos', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const initial = user?.email?.charAt(0).toUpperCase() ?? '?';
@@ -208,7 +288,7 @@ export default function ProfileScreen() {
               <AnimatedPressable
                 style={styles.premiumButton}
                 onPress={() => {
-                  lightTap();
+                  hapticPaywallOpen();
                   track('premium_cta_tapped', { source: 'profile' });
                   setShowPaywall(true);
                 }}
@@ -241,15 +321,39 @@ export default function ProfileScreen() {
           </View>
         </Animated.View>
 
-        {/* Actions */}
-        <View style={styles.actionsSection}>
+        {/* Account section */}
+        <Animated.View entering={cardEntry(8)} style={[styles.accountCard, { borderColor: colors.border }]}>
+          <Text style={[styles.accountTitle, { color: colors.textPrimary }]}>Cuenta</Text>
+
+          <AccountRow
+            icon="shield-checkmark-outline"
+            label="Privacidad y datos"
+            color={colors.textPrimary}
+            onPress={() => Linking.openURL(PRIVACY_URL)}
+          />
+          <AccountRow
+            icon="document-text-outline"
+            label="Términos de servicio"
+            color={colors.textPrimary}
+            onPress={() => Linking.openURL(TERMS_URL)}
+          />
+          <AccountRow
+            icon="download-outline"
+            label={exporting ? 'Exportando...' : 'Exportar mis datos'}
+            color={colors.textPrimary}
+            onPress={handleExportData}
+            disabled={exporting}
+          />
+
+          <View style={[styles.accountSeparator, { backgroundColor: colors.border }]} />
+
           <AnimatedPressable
             style={styles.logoutButton}
             onPress={handleLogout}
             accessibilityLabel="Cerrar sesión"
           >
-            <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
-            <Text style={styles.logoutText}>Cerrar sesión</Text>
+            <Ionicons name="log-out-outline" size={20} color={COLORS.warning} />
+            <Text style={[styles.accountRowLabel, { color: COLORS.warning }]}>Cerrar sesión</Text>
           </AnimatedPressable>
 
           <AnimatedPressable
@@ -257,14 +361,61 @@ export default function ProfileScreen() {
             onPress={handleDeleteAccount}
             accessibilityLabel="Eliminar cuenta"
           >
-            <Text style={styles.deleteAccountText}>Eliminar cuenta</Text>
+            <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+            <Text style={[styles.accountRowLabel, { color: COLORS.error }]}>Eliminar cuenta</Text>
           </AnimatedPressable>
-        </View>
+        </Animated.View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
       <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="profile" />
+
+      {/* Delete account confirmation modal */}
+      <Modal visible={showDeleteModal} transparent animationType="fade" onRequestClose={() => setShowDeleteModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Confirmar eliminación</Text>
+            <Text style={[styles.modalDesc, { color: colors.textSecondary }]}>
+              Escribe ELIMINAR para confirmar que deseas eliminar permanentemente tu cuenta y todos tus datos.
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              placeholder="Escribe ELIMINAR"
+              placeholderTextColor={colors.textMuted}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel, { borderColor: colors.border }]}
+                onPress={() => setShowDeleteModal(false)}
+                disabled={deleting}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  styles.modalBtnDelete,
+                  deleteConfirmText !== 'ELIMINAR' && styles.modalBtnDisabled,
+                ]}
+                onPress={executeDeleteAccount}
+                disabled={deleteConfirmText !== 'ELIMINAR' || deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.modalBtnDeleteText}>Eliminar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -279,6 +430,28 @@ function BenefitRow({ text }: { text: string }) {
       <Ionicons name="checkmark-circle" size={16} color="#8FD3FF" />
       <Text style={styles.benefitText}>{text}</Text>
     </View>
+  );
+}
+
+function AccountRow({
+  icon,
+  label,
+  color,
+  onPress,
+  disabled,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <AnimatedPressable style={styles.accountRow} onPress={onPress} disabled={disabled}>
+      <Ionicons name={icon} size={20} color={color} />
+      <Text style={[styles.accountRowLabel, { color }]}>{label}</Text>
+      <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+    </AnimatedPressable>
   );
 }
 
@@ -506,30 +679,107 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
 
-  // -- Actions ---------------------------------------------------------------
-  actionsSection: {
-    paddingHorizontal: 24,
-    gap: 12,
+  // -- Account card ----------------------------------------------------------
+  accountCard: {
+    marginHorizontal: 24,
+    marginBottom: 20,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+  },
+  accountTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  accountRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    gap: 12,
+    paddingVertical: 12,
+  },
+  accountRowLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  accountSeparator: {
+    height: 1,
+    marginVertical: 8,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-  },
-  logoutText: {
-    fontSize: 16,
-    color: '#FF3B30',
-    fontWeight: '500',
+    gap: 12,
+    paddingVertical: 12,
   },
   deleteAccountButton: {
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
   },
-  deleteAccountText: {
-    fontSize: 13,
-    color: '#B8BCC4',
-    fontWeight: '400',
+
+  // -- Delete modal ----------------------------------------------------------
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  modalContent: {
+    width: '100%',
+    borderRadius: 20,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  modalInput: {
+    height: 48,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBtnCancel: {
+    borderWidth: 1,
+  },
+  modalBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalBtnDelete: {
+    backgroundColor: COLORS.error,
+  },
+  modalBtnDisabled: {
+    opacity: 0.4,
+  },
+  modalBtnDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

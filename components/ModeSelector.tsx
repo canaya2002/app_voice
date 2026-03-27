@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, MODE_CONFIGS, isModeFreeTier } from '@/lib/constants';
-import { selectionTap } from '@/lib/haptics';
+import { hapticModeChange } from '@/lib/haptics';
 import type { OutputMode } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ export default function ModeSelector({
         const isLocked = userPlan === 'free' && !isModeFreeTier(config.id) && !isGenerated;
 
         const handlePress = () => {
-          selectionTap();
+          hapticModeChange();
           if (isCurrent) return;
           if (isLocked) {
             onPremiumRequired?.(config.id);

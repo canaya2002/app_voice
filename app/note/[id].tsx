@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import AnimatedPressable from '@/components/AnimatedPressable';
 import { useNotesStore } from '@/stores/notesStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getSignedAudioUrl } from '@/lib/transcription';
-import { lightTap } from '@/lib/haptics';
+import { hapticButtonPress } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import { track, trackModeView, trackModeGenerated } from '@/lib/analytics';
 import Paywall from '@/components/Paywall';
@@ -38,6 +38,7 @@ export default function NoteDetailScreen() {
   const {
     currentNote, loading, modeResults, converting, convertingMode,
     fetchNote, fetchModeResults, subscribeToNote, convertMode, updateSpeakers,
+    retryProcessing,
   } = useNotesStore();
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export default function NoteDetailScreen() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const { user } = useAuthStore();
   const colors = useThemeColors();
 
@@ -65,10 +67,13 @@ export default function NoteDetailScreen() {
     if (currentNote && !selectedMode) setSelectedMode(currentNote.primary_mode || 'summary');
   }, [currentNote, selectedMode]);
 
-  const generatedModes = modeResults.map((r) => r.mode as OutputMode);
-  if (currentNote?.primary_mode && !generatedModes.includes(currentNote.primary_mode)) {
-    generatedModes.push(currentNote.primary_mode);
-  }
+  const generatedModes = useMemo(() => {
+    const modes = modeResults.map((r) => r.mode as OutputMode);
+    if (currentNote?.primary_mode && !modes.includes(currentNote.primary_mode)) {
+      modes.push(currentNote.primary_mode);
+    }
+    return modes;
+  }, [modeResults, currentNote?.primary_mode]);
 
   const activeResult: ModeResult | undefined = modeResults.find((r) => r.mode === selectedMode);
 
@@ -121,6 +126,15 @@ export default function NoteDetailScreen() {
   const isError = currentNote.status === 'error';
   const isProcessing = !isDone && !isError;
 
+  // Parse error type from error_message (format: "type: detail")
+  const errorType = currentNote.error_message?.split(':')[0]?.trim() ?? 'unknown';
+  const errorUserMessage =
+    errorType === 'transcription_failed'
+      ? 'No pudimos transcribir este audio. Verifica que el audio tiene voz clara y vuelve a intentar.'
+      : errorType === 'processing_failed'
+        ? 'La transcripción fue exitosa pero falló al generar el resultado. Puedes ver la transcripción abajo.'
+        : currentNote.error_message ?? 'Algo salió mal. Puedes intentar de nuevo.';
+
   const displayResult = activeResult?.result ?? (selectedMode === currentNote.primary_mode ? {
     title_suggestion: currentNote.title,
     summary: currentNote.summary,
@@ -139,7 +153,7 @@ export default function NoteDetailScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.header}
         >
-          <AnimatedPressable onPress={() => { lightTap(); router.back(); }} style={styles.backBtn}>
+          <AnimatedPressable onPress={() => { hapticButtonPress(); router.back(); }} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </AnimatedPressable>
           <View style={styles.headerCenter}>
@@ -183,11 +197,62 @@ export default function NoteDetailScreen() {
           onComplete={() => { if (id) { fetchNote(id); fetchModeResults(id); } }}
         />
       ) : isError ? (
-        <View style={styles.center}>
-          <Ionicons name="alert-circle" size={48} color={COLORS.error} />
-          <Text style={styles.errorTitle}>Error al procesar</Text>
-          <Text style={styles.errorMsg}>{currentNote.error_message ?? 'Error desconocido'}</Text>
-        </View>
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          <View style={styles.errorSection}>
+            <Ionicons
+              name={errorType === 'transcription_failed' ? 'mic-off-outline' : 'alert-circle-outline'}
+              size={48}
+              color={COLORS.error}
+            />
+            <Text style={styles.errorTitle}>
+              {errorType === 'transcription_failed' ? 'Error de transcripción'
+                : errorType === 'processing_failed' ? 'Error de procesamiento'
+                : 'Algo salió mal'}
+            </Text>
+            <Text style={styles.errorMsg}>{errorUserMessage}</Text>
+
+            {/* Retry button */}
+            <AnimatedPressable
+              onPress={async () => {
+                if (!id || retrying) return;
+                setRetrying(true);
+                track('note_retry', { note_id: id, error_type: errorType });
+                const ok = await retryProcessing(id);
+                setRetrying(false);
+                if (ok) {
+                  showToast('Reintentando...', 'info');
+                } else {
+                  showToast('No se pudo reintentar.', 'error');
+                }
+              }}
+              disabled={retrying}
+              style={styles.retryButton}
+            >
+              {retrying ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={18} color="#FFFFFF" />
+                  <Text style={styles.retryText}>Reintentar</Text>
+                </>
+              )}
+            </AnimatedPressable>
+
+            <AnimatedPressable onPress={() => router.back()} style={styles.errorBackButton}>
+              <Text style={styles.errorBackText}>Volver al inicio</Text>
+            </AnimatedPressable>
+          </View>
+
+          {/* Show transcript if it was saved despite error */}
+          {currentNote.transcript ? (
+            <View style={styles.errorTranscriptSection}>
+              <Text style={styles.errorTranscriptLabel}>Transcripción disponible</Text>
+              <View style={styles.plainTranscript}>
+                <Text style={styles.plainText}>{currentNote.transcript}</Text>
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
       ) : (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <ModeSelector
@@ -334,4 +399,22 @@ const styles = StyleSheet.create({
   },
   reconvertText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
   reconvertHint: { fontSize: 13, color: COLORS.textMuted },
+
+  // Error state
+  errorSection: {
+    alignItems: 'center', paddingVertical: 40, paddingHorizontal: 32, gap: 12,
+  },
+  retryButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.primary, paddingHorizontal: 28, paddingVertical: 14,
+    borderRadius: 16, marginTop: 8,
+  },
+  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  errorBackButton: { paddingVertical: 10, marginTop: 4 },
+  errorBackText: { fontSize: 14, color: COLORS.textMuted, fontWeight: '500' },
+  errorTranscriptSection: { paddingHorizontal: 24, marginTop: 8 },
+  errorTranscriptLabel: {
+    fontSize: 13, fontWeight: '600', color: COLORS.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8,
+  },
 });

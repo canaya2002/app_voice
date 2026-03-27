@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,8 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const { register, loading, error, clearError } = useAuthStore();
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   /* ── shake animation for error ──────────────────────── */
   const shakeX = useSharedValue(0);
@@ -133,6 +135,8 @@ export default function RegisterScreen() {
               autoCorrect={false}
               textContentType="emailAddress"
               returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
               value={email}
               onChangeText={setEmail}
               onFocus={() => setFocusedField('email')}
@@ -153,12 +157,15 @@ export default function RegisterScreen() {
               color={focusedField === 'password' ? COLORS.primary : COLORS.textMuted}
             />
             <TextInput
+              ref={passwordRef}
               style={styles.input}
               placeholder="Contraseña (mín. 8 caracteres)"
               placeholderTextColor={COLORS.textMuted}
               secureTextEntry
               textContentType="newPassword"
               returnKeyType="next"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              blurOnSubmit={false}
               value={password}
               onChangeText={setPassword}
               onFocus={() => setFocusedField('password')}
@@ -183,12 +190,13 @@ export default function RegisterScreen() {
               }
             />
             <TextInput
+              ref={confirmRef}
               style={styles.input}
               placeholder="Confirmar contraseña"
               placeholderTextColor={COLORS.textMuted}
               secureTextEntry
               textContentType="newPassword"
-              returnKeyType="done"
+              returnKeyType="go"
               onSubmitEditing={handleRegister}
               value={confirmPassword}
               onChangeText={setConfirmPassword}

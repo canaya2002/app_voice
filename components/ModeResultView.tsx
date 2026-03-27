@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/lib/constants';
-import { selectionTap, successTap } from '@/lib/haptics';
+import { hapticModeChange, hapticCopyClipboard } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import type { OutputMode, MessageTone } from '@/types';
 
@@ -53,7 +53,7 @@ function tasksStorageKey(noteId: string): string {
 
 async function copyText(text: string, label = 'Texto copiado') {
   await Clipboard.setStringAsync(text);
-  successTap();
+  hapticCopyClipboard();
   showToast(label, 'success');
 }
 
@@ -259,12 +259,12 @@ function TaskCheckbox({
 
       <View style={styles.taskActions}>
         {onMoveUp && (
-          <TouchableOpacity onPress={() => { selectionTap(); onMoveUp(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
+          <TouchableOpacity onPress={() => { hapticModeChange(); onMoveUp(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
             <Ionicons name="chevron-up" size={14} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}
         {onMoveDown && (
-          <TouchableOpacity onPress={() => { selectionTap(); onMoveDown(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
+          <TouchableOpacity onPress={() => { hapticModeChange(); onMoveDown(); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={styles.reorderBtn}>
             <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}
@@ -288,7 +288,7 @@ function QuestionRow({ question, hint }: { question: string; hint: string }) {
       style={styles.questionCard}
       activeOpacity={0.7}
       onPress={() => {
-        selectionTap();
+        hapticModeChange();
         setExpanded(!expanded);
       }}
     >
@@ -387,7 +387,7 @@ function CopyResultFooter({ mode, result }: { mode: OutputMode; result: Record<s
       style={styles.copyResultFooter}
       activeOpacity={0.7}
       onPress={() => {
-        selectionTap();
+        hapticModeChange();
         copyText(buildModeTextForCopy(mode, result), 'Resultado copiado');
       }}
       accessibilityLabel="Copiar resultado"
@@ -405,7 +405,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       style={styles.copyButton}
       activeOpacity={0.7}
       onPress={() => {
-        selectionTap();
+        hapticModeChange();
         copyText(text, 'Mensaje copiado');
       }}
     >
@@ -520,7 +520,7 @@ function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId
   }, [customOrder, orderKey, loaded]);
 
   const toggleTask = useCallback((index: number) => {
-    selectionTap();
+    hapticModeChange();
     setCheckedSet((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
@@ -534,7 +534,7 @@ function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId
   }, []);
 
   const deleteTask = useCallback((index: number) => {
-    selectionTap();
+    hapticModeChange();
     setDeletedSet((prev) => {
       const next = new Set(prev);
       next.add(index);
@@ -726,7 +726,7 @@ function CleanTextView({ result }: { result: Record<string, unknown> }) {
           style={styles.floatingCopy}
           activeOpacity={0.8}
           onPress={() => {
-            selectionTap();
+            hapticModeChange();
             copyText(cleanText, 'Texto copiado');
           }}
           accessibilityLabel="Copiar todo"

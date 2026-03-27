@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, TEMPLATE_CONFIGS } from '@/lib/constants';
-import { selectionTap } from '@/lib/haptics';
+import { hapticSelection } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import type { NoteTemplate } from '@/types';
 
@@ -42,7 +42,7 @@ function CompactChip({
   return (
     <AnimatedPressable
       onPress={() => {
-        selectionTap();
+        hapticSelection();
         onPress(id);
       }}
       style={[
@@ -94,7 +94,7 @@ function GridCard({
         isSelected ? styles.gridCardSelected : styles.gridCardDefault,
       ]}
       onPress={() => {
-        selectionTap();
+        hapticSelection();
         onPress(id);
       }}
       activeOpacity={0.7}

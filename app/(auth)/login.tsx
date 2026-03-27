@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const { login, loading, error, clearError } = useAuthStore();
+  const passwordRef = useRef<TextInput>(null);
 
   /* ── shake animation for error ──────────────────────── */
   const shakeX = useSharedValue(0);
@@ -129,6 +130,8 @@ export default function LoginScreen() {
               autoCorrect={false}
               textContentType="emailAddress"
               returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
               value={email}
               onChangeText={setEmail}
               onFocus={() => setFocusedField('email')}
@@ -149,12 +152,13 @@ export default function LoginScreen() {
               color={focusedField === 'password' ? COLORS.primary : COLORS.textMuted}
             />
             <TextInput
+              ref={passwordRef}
               style={styles.input}
               placeholder="Contraseña"
               placeholderTextColor={COLORS.textMuted}
               secureTextEntry
               textContentType="password"
-              returnKeyType="done"
+              returnKeyType="go"
               onSubmitEditing={handleLogin}
               value={password}
               onChangeText={setPassword}
@@ -189,7 +193,7 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={styles.forgotButton}
             onPress={async () => {
-              if (!email.trim() || !validateEmail(email)) {
+              if (!email.trim() || !validateEmail(email).valid) {
                 Alert.alert('Recuperar contraseña', 'Ingresa tu email arriba primero.');
                 return;
               }

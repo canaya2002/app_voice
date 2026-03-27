@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { COLORS, getModeConfig } from '@/lib/constants';
 import { cardEntry } from '@/lib/animations';
 import { formatDurationLong } from '@/lib/audio';
-import { lightTap, errorTap } from '@/lib/haptics';
+import { hapticButtonPress, hapticSwipeActivate, hapticSwipeConfirmDelete } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import type { Note } from '@/types';
 
@@ -150,7 +150,7 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
             useNativeDriver: true,
             bounciness: 4,
           }).start();
-          errorTap();
+          hapticSwipeActivate();
         } else {
           RNAnimated.spring(translateX, {
             toValue: 0,
@@ -176,7 +176,7 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
 
   // -- Handlers --------------------------------------------------------------
   const handlePress = () => {
-    lightTap();
+    hapticButtonPress();
     router.push(`/note/${note.id}`);
   };
 
@@ -199,7 +199,7 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
           text: 'Eliminar',
           style: 'destructive',
           onPress: () => {
-            errorTap();
+            hapticSwipeConfirmDelete();
             onDelete?.(note.id);
             RNAnimated.timing(translateX, {
               toValue: 0,

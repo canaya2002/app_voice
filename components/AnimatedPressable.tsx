@@ -7,7 +7,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
+import { hapticButtonPress } from '@/lib/haptics';
 
 const SPRING_DOWN = { damping: 20, stiffness: 400, mass: 0.5 };
 const SPRING_UP = { damping: 10, stiffness: 200, mass: 0.3 };
@@ -45,7 +45,7 @@ export default function AnimatedPressable({
       opacity.value = withSpring(1, SPRING_UP);
       if (success && onPress) {
         if (haptic) {
-          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+          runOnJS(hapticButtonPress)();
         }
         runOnJS(onPress)();
       }
