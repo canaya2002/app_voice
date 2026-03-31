@@ -2,9 +2,11 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -15,6 +17,7 @@ import RNAnimated, {
   FadeInUp,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { COLORS, getModeConfig, useThemeColors } from '@/lib/constants';
 import AudioPlayer from '@/components/AudioPlayer';
 import ModeResultView from '@/components/ModeResultView';
@@ -31,7 +34,7 @@ import { hapticButtonPress } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import { track, trackModeView, trackModeGenerated } from '@/lib/analytics';
 import Paywall from '@/components/Paywall';
-import type { OutputMode, SpeakerInfo, ModeResult } from '@/types';
+import type { OutputMode, SpeakerInfo, ModeResult, Folder } from '@/types';
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -44,20 +47,26 @@ export default function NoteDetailScreen() {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<OutputMode | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [editingTranscript, setEditingTranscript] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState('');
+  const [savingTranscript, setSavingTranscript] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const { user } = useAuthStore();
+  const { folders, fetchFolders, moveNoteToFolder } = useNotesStore();
   const colors = useThemeColors();
 
   useEffect(() => {
     if (id) {
       fetchNote(id);
       fetchModeResults(id);
+      fetchFolders();
       const unsub = subscribeToNote(id);
       return unsub;
     }
-  }, [id, fetchNote, fetchModeResults, subscribeToNote]);
+  }, [id, fetchNote, fetchModeResults, fetchFolders, subscribeToNote]);
 
   useEffect(() => {
     if (currentNote?.audio_url) getSignedAudioUrl(currentNote.audio_url).then(setSignedUrl);
@@ -92,6 +101,15 @@ export default function NoteDetailScreen() {
       showToast('No se pudo generar. Intenta de nuevo.', 'error');
     }
   }, [id, convertMode]);
+
+  const handleSaveTranscript = useCallback(async () => {
+    if (!id || !transcriptDraft.trim()) return;
+    setSavingTranscript(true);
+    await useNotesStore.getState().updateNote(id, { transcript: transcriptDraft.trim() });
+    setEditingTranscript(false);
+    setSavingTranscript(false);
+    showToast('Transcripción actualizada', 'success');
+  }, [id, transcriptDraft]);
 
   const handleSaveSpeakers = useCallback(async (updated: SpeakerInfo[]) => {
     if (!id) return;
@@ -176,6 +194,14 @@ export default function NoteDetailScreen() {
                   <Text style={styles.badgeText}>{Math.ceil(currentNote.audio_duration / 60)} min</Text>
                 </View>
               )}
+              <TouchableOpacity onPress={() => setShowFolderPicker(true)} style={styles.badge}>
+                <Ionicons name="folder-outline" size={10} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.badgeText}>
+                  {currentNote.folder_id
+                    ? folders.find(f => f.id === currentNote.folder_id)?.name ?? 'Carpeta'
+                    : 'Mover a carpeta'}
+                </Text>
+              </TouchableOpacity>
             </RNAnimated.View>
           </View>
           <View style={{ width: 40 }} />
@@ -197,7 +223,7 @@ export default function NoteDetailScreen() {
           onComplete={() => { if (id) { fetchNote(id); fetchModeResults(id); } }}
         />
       ) : isError ? (
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.errorSection}>
             <Ionicons
               name={errorType === 'transcription_failed' ? 'mic-off-outline' : 'alert-circle-outline'}
@@ -254,7 +280,8 @@ export default function NoteDetailScreen() {
           ) : null}
         </ScrollView>
       ) : (
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 100 }}>
+          <RNAnimated.View entering={FadeInDown.delay(100).springify().damping(20)}>
           <ModeSelector
             currentMode={selectedMode ?? currentNote.primary_mode}
             generatedModes={generatedModes}
@@ -268,6 +295,7 @@ export default function NoteDetailScreen() {
             loading={converting}
             loadingMode={convertingMode}
           />
+          </RNAnimated.View>
 
           {converting && convertingMode === selectedMode ? (
             <View style={styles.convertWrap}>
@@ -276,7 +304,7 @@ export default function NoteDetailScreen() {
               <Text style={styles.convertText}>Transformando tu audio...</Text>
             </View>
           ) : displayResult ? (
-            <>
+            <RNAnimated.View entering={FadeInUp.delay(200).springify().damping(20)}>
               <ModeResultView
                 mode={selectedMode ?? currentNote.primary_mode}
                 result={displayResult}
@@ -290,7 +318,7 @@ export default function NoteDetailScreen() {
                   <Text style={styles.reconvertHint}>Prueba otro formato arriba.</Text>
                 </View>
               )}
-            </>
+            </RNAnimated.View>
           ) : (
             <View style={styles.convertWrap}>
               <Ionicons name="layers-outline" size={32} color={COLORS.borderLight} />
@@ -322,9 +350,45 @@ export default function NoteDetailScreen() {
                   speakers={currentNote.speakers}
                   onRenameSpeaker={() => setShowRenameModal(true)}
                 />
+              ) : editingTranscript ? (
+                <View style={styles.plainTranscript}>
+                  <TextInput
+                    style={[styles.plainText, styles.transcriptInput]}
+                    value={transcriptDraft}
+                    onChangeText={setTranscriptDraft}
+                    multiline
+                    autoFocus
+                  />
+                  <View style={styles.transcriptActions}>
+                    <TouchableOpacity
+                      onPress={() => setEditingTranscript(false)}
+                      style={styles.transcriptCancelBtn}
+                    >
+                      <Text style={styles.transcriptCancelText}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleSaveTranscript}
+                      disabled={savingTranscript}
+                      style={styles.transcriptSaveBtn}
+                    >
+                      {savingTranscript ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.transcriptSaveText}>Guardar</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ) : (
                 <View style={styles.plainTranscript}>
                   <Text style={styles.plainText}>{currentNote.transcript}</Text>
+                  <TouchableOpacity
+                    onPress={() => { setTranscriptDraft(currentNote.transcript); setEditingTranscript(true); }}
+                    style={styles.editTranscriptBtn}
+                  >
+                    <Ionicons name="create-outline" size={14} color={COLORS.primaryLight} />
+                    <Text style={styles.editTranscriptText}>Editar transcripción</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </RNAnimated.View>
@@ -347,6 +411,54 @@ export default function NoteDetailScreen() {
         onClose={() => setShowRenameModal(false)}
       />
       <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="mode_gate" />
+
+      {/* Folder Picker Modal */}
+      {showFolderPicker && (
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+            activeOpacity={1}
+            onPress={() => setShowFolderPicker(false)}
+          >
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 16, textAlign: 'center' }}>Mover a carpeta</Text>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (id) await moveNoteToFolder(id, null);
+                  setShowFolderPicker(false);
+                  showToast('Nota sin carpeta', 'info');
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight }}
+              >
+                <Ionicons name="remove-circle-outline" size={20} color={COLORS.textMuted} />
+                <Text style={{ fontSize: 15, color: COLORS.textSecondary }}>Sin carpeta</Text>
+                {!currentNote.folder_id && <Ionicons name="checkmark" size={18} color={COLORS.success} style={{ marginLeft: 'auto' }} />}
+              </TouchableOpacity>
+              {folders.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  onPress={async () => {
+                    if (id) await moveNoteToFolder(id, f.id);
+                    setShowFolderPicker(false);
+                    showToast(`Movida a ${f.name}`, 'success');
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight }}
+                >
+                  <Ionicons name="folder" size={20} color={f.color} />
+                  <Text style={{ fontSize: 15, color: COLORS.textPrimary, fontWeight: '500' }}>{f.name}</Text>
+                  {currentNote.folder_id === f.id && <Ionicons name="checkmark" size={18} color={COLORS.success} style={{ marginLeft: 'auto' }} />}
+                </TouchableOpacity>
+              ))}
+              {folders.length === 0 && (
+                <Text style={{ fontSize: 14, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 20 }}>
+                  No tienes carpetas. Crea una desde el historial.
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -388,6 +500,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceAlt, borderRadius: 16, padding: 18,
   },
   plainText: { fontSize: 15, lineHeight: 26, color: COLORS.textPrimary },
+  transcriptInput: { minHeight: 120, textAlignVertical: 'top' },
+  transcriptActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 12 },
+  transcriptCancelBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  transcriptCancelText: { fontSize: 14, color: COLORS.textMuted, fontWeight: '500' },
+  transcriptSaveBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8, backgroundColor: COLORS.primary },
+  transcriptSaveText: { fontSize: 14, color: '#FFFFFF', fontWeight: '600' },
+  editTranscriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, alignSelf: 'flex-end' },
+  editTranscriptText: { fontSize: 13, color: COLORS.primaryLight, fontWeight: '500' },
   notFound: { fontSize: 16, color: COLORS.textSecondary, marginBottom: 12 },
   errorTitle: { fontSize: 20, fontWeight: '700', color: COLORS.error, marginTop: 16 },
   errorMsg: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 22 },

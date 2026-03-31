@@ -8,11 +8,15 @@ import {
   RefreshControl,
   Alert,
   ScrollView,
+  Modal,
+  TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { COLORS, useThemeColors } from '@/lib/constants';
 import { cardEntry } from '@/lib/animations';
 import AnimatedPressable from '@/components/AnimatedPressable';
@@ -23,8 +27,10 @@ import { NoteCardSkeletonList } from '@/components/Skeleton';
 import { useNotesStore } from '@/stores/notesStore';
 import { useAuthStore } from '@/stores/authStore';
 import { showToast } from '@/components/Toast';
-import { hapticSelection } from '@/lib/haptics';
-import type { Note } from '@/types';
+import { hapticSelection, hapticButtonPress } from '@/lib/haptics';
+import type { Note, Folder } from '@/types';
+
+const FOLDER_COLORS = ['#8FD3FF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5856D6', '#FF2D55', '#A2845E'];
 
 // ---------------------------------------------------------------------------
 // Filter chip data
@@ -71,41 +77,67 @@ function matchesTimeFilter(dateStr: string, timeFilter: TimeFilter): boolean {
 // ---------------------------------------------------------------------------
 
 export default function HistoryScreen() {
-  const { notes, loading, fetchNotes, subscribeToNotes, deleteNote } = useNotesStore();
+  const {
+    notes, loading, folders, trashedNotes,
+    fetchNotes, subscribeToNotes, softDeleteNote, restoreNote, permanentDeleteNote,
+    fetchFolders, createFolder, deleteFolder, fetchTrashedNotes,
+  } = useNotesStore();
   const { user } = useAuthStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterOption>('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('any');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [showTrash, setShowTrash] = useState(false);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderColor, setNewFolderColor] = useState(FOLDER_COLORS[0]);
 
-  useEffect(() => { fetchNotes().then(() => setInitialLoad(false)); }, [fetchNotes]);
+  useEffect(() => {
+    Promise.all([fetchNotes(), fetchFolders()]).then(() => setInitialLoad(false));
+  }, [fetchNotes, fetchFolders]);
   useEffect(() => {
     if (user) { const unsub = subscribeToNotes(user.id); return unsub; }
   }, [user, subscribeToNotes]);
 
-  const onRefresh = useCallback(async () => { setRefreshing(true); await fetchNotes(); setRefreshing(false); }, [fetchNotes]);
+  const onRefresh = useCallback(async () => { setRefreshing(true); await Promise.all([fetchNotes(), fetchFolders()]); setRefreshing(false); }, [fetchNotes, fetchFolders]);
 
   const handleDelete = useCallback((noteId: string) => {
-    Alert.alert('Eliminar nota', '¿Estás seguro? Esta acción no se puede deshacer.', [
+    Alert.alert('Mover a papelera', 'Puedes restaurarla dentro de 30 días.', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: async () => { await deleteNote(noteId); showToast('Nota eliminada', 'info'); } },
+      { text: 'Mover', style: 'destructive', onPress: async () => { await softDeleteNote(noteId); showToast('Nota movida a papelera', 'info'); } },
     ]);
-  }, [deleteNote]);
+  }, [softDeleteNote]);
+
+  const handleOpenTrash = useCallback(async () => {
+    await fetchTrashedNotes();
+    setShowTrash(true);
+  }, [fetchTrashedNotes]);
+
+  const handleCreateFolder = useCallback(async () => {
+    if (!newFolderName.trim()) return;
+    await createFolder(newFolderName.trim(), newFolderColor);
+    setNewFolderName('');
+    setShowNewFolder(false);
+    showToast('Carpeta creada', 'success');
+  }, [createFolder, newFolderName, newFolderColor]);
 
   const filteredNotes = notes.filter((note) => {
+    // Folder filter
+    if (selectedFolder && note.folder_id !== selectedFolder) return false;
     // Time filter
     if (!matchesTimeFilter(note.created_at, timeFilter)) return false;
-    // Text search
+    // Text search with fuzzy matching (split query into words, all must match somewhere)
     if (search.trim()) {
-      const q = search.toLowerCase();
-      const matches =
-        note.title.toLowerCase().includes(q) ||
-        note.summary.toLowerCase().includes(q) ||
-        note.transcript.toLowerCase().includes(q) ||
-        note.clean_text.toLowerCase().includes(q) ||
-        note.key_points.some((p) => p.toLowerCase().includes(q)) ||
-        note.tasks.some((t) => t.toLowerCase().includes(q));
+      const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+      const haystack = [
+        note.title, note.summary, note.transcript, note.clean_text,
+        ...note.key_points, ...note.tasks,
+        note.template ?? '', note.primary_mode,
+        ...(note.speakers?.map(s => s.custom_name ?? s.default_name) ?? []),
+      ].join(' ').toLowerCase();
+      const matches = words.every((w) => haystack.includes(w));
       if (!matches) return false;
     }
     // Category filter
@@ -129,8 +161,49 @@ export default function HistoryScreen() {
       {/* Header */}
       <Animated.View entering={FadeInDown.delay(50).duration(500)} style={styles.header}>
         <Text style={styles.title}>Historial</Text>
-        <Text style={styles.count}>{notes.length} notas</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text style={styles.count}>{notes.length} notas</Text>
+          <AnimatedPressable onPress={handleOpenTrash} style={styles.trashBtn}>
+            <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+          </AnimatedPressable>
+        </View>
       </Animated.View>
+
+      {/* Folder bar */}
+      {folders.length > 0 && (
+        <Animated.View entering={FadeInDown.delay(80).duration(500)}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.folderBar}>
+            <AnimatedPressable
+              onPress={() => { hapticSelection(); setSelectedFolder(null); }}
+              style={[styles.folderChip, !selectedFolder && styles.folderChipActive]}
+            >
+              <Ionicons name="apps-outline" size={12} color={!selectedFolder ? '#FFF' : COLORS.textSecondary} />
+              <Text style={[styles.folderChipText, !selectedFolder && styles.folderChipTextActive]}>Todas</Text>
+            </AnimatedPressable>
+            {folders.map((f) => (
+              <AnimatedPressable
+                key={f.id}
+                onPress={() => { hapticSelection(); setSelectedFolder(selectedFolder === f.id ? null : f.id); }}
+                style={[styles.folderChip, selectedFolder === f.id && { backgroundColor: f.color }]}
+              >
+                <Ionicons name="folder" size={12} color={selectedFolder === f.id ? '#FFF' : f.color} />
+                <Text style={[styles.folderChipText, selectedFolder === f.id && { color: '#FFF' }]}>{f.name}</Text>
+              </AnimatedPressable>
+            ))}
+            <AnimatedPressable onPress={() => setShowNewFolder(true)} style={styles.folderAddBtn}>
+              <Ionicons name="add" size={16} color={COLORS.textMuted} />
+            </AnimatedPressable>
+          </ScrollView>
+        </Animated.View>
+      )}
+      {folders.length === 0 && (
+        <View style={{ paddingHorizontal: 24, marginBottom: 4 }}>
+          <AnimatedPressable onPress={() => setShowNewFolder(true)} style={styles.createFolderBtn}>
+            <Ionicons name="folder-outline" size={14} color={COLORS.primaryLight} />
+            <Text style={{ fontSize: 13, color: COLORS.primaryLight, fontWeight: '500' }}>Crear carpeta</Text>
+          </AnimatedPressable>
+        </View>
+      )}
 
       {/* Search bar */}
       <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.searchContainer}>
@@ -230,6 +303,103 @@ export default function HistoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Trash Modal */}
+      <Modal visible={showTrash} animationType="slide" onRequestClose={() => setShowTrash(false)}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.trashHeader}>
+            <AnimatedPressable onPress={() => setShowTrash(false)}>
+              <Ionicons name="chevron-back" size={24} color={COLORS.textPrimary} />
+            </AnimatedPressable>
+            <Text style={styles.trashTitle}>Papelera</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          {trashedNotes.length === 0 ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+              <Ionicons name="trash-outline" size={48} color={COLORS.borderLight} />
+              <Text style={{ fontSize: 17, fontWeight: '600', color: COLORS.textSecondary, marginTop: 16 }}>Papelera vacía</Text>
+              <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 4, textAlign: 'center' }}>Las notas eliminadas aparecen aquí por 30 días.</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={trashedNotes}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ padding: 24 }}
+              renderItem={({ item }) => (
+                <View style={styles.trashCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trashCardTitle} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.trashCardMeta}>
+                      Eliminada {item.deleted_at ? new Date(item.deleted_at).toLocaleDateString('es-ES') : ''}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        await restoreNote(item.id);
+                        showToast('Nota restaurada', 'success');
+                      }}
+                      style={styles.trashRestoreBtn}
+                    >
+                      <Ionicons name="arrow-undo" size={16} color={COLORS.success} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Alert.alert('Eliminar permanentemente', 'Esta acción no se puede deshacer.', [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Eliminar', style: 'destructive', onPress: async () => {
+                            await permanentDeleteNote(item.id);
+                            showToast('Eliminada permanentemente', 'info');
+                          }},
+                        ]);
+                      }}
+                      style={styles.trashDeleteBtn}
+                    >
+                      <Ionicons name="trash" size={16} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* New Folder Modal */}
+      <Modal visible={showNewFolder} transparent animationType="fade" onRequestClose={() => setShowNewFolder(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowNewFolder(false)}>
+          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Nueva carpeta</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre de la carpeta"
+              placeholderTextColor={COLORS.textMuted}
+              value={newFolderName}
+              onChangeText={setNewFolderName}
+              autoFocus
+              maxLength={30}
+            />
+            <View style={styles.colorPicker}>
+              {FOLDER_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setNewFolderColor(c)}
+                  style={[styles.colorDot, { backgroundColor: c }, newFolderColor === c && styles.colorDotActive]}
+                />
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity onPress={() => setShowNewFolder(false)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleCreateFolder} disabled={!newFolderName.trim()} style={[styles.modalCreateBtn, !newFolderName.trim() && { opacity: 0.4 }]}>
+                <Text style={styles.modalCreateText}>Crear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -336,6 +506,80 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontWeight: '600',
   },
+
+  // -- Trash button -----------------------------------------------------------
+  trashBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: COLORS.surfaceAlt, justifyContent: 'center', alignItems: 'center',
+  },
+
+  // -- Folder bar -------------------------------------------------------------
+  folderBar: { paddingHorizontal: 20, paddingBottom: 10, gap: 6 },
+  folderChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  folderChipActive: { backgroundColor: COLORS.primary },
+  folderChipText: { fontSize: 12, fontWeight: '500', color: COLORS.textSecondary },
+  folderChipTextActive: { color: '#FFFFFF' },
+  folderAddBtn: {
+    width: 32, height: 32, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center',
+  },
+  createFolderBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start', paddingVertical: 4,
+  },
+
+  // -- Trash modal ------------------------------------------------------------
+  trashHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight,
+  },
+  trashTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
+  trashCard: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 14, borderRadius: 12, backgroundColor: COLORS.surfaceAlt,
+    marginBottom: 8, gap: 12,
+  },
+  trashCardTitle: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },
+  trashCardMeta: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  trashRestoreBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: COLORS.success + '15', justifyContent: 'center', alignItems: 'center',
+  },
+  trashDeleteBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: COLORS.error + '15', justifyContent: 'center', alignItems: 'center',
+  },
+
+  // -- Modals -----------------------------------------------------------------
+  modalOverlay: {
+    flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalSheet: {
+    width: '100%', maxWidth: 340, backgroundColor: COLORS.surface,
+    borderRadius: 20, padding: 24,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 16, textAlign: 'center' },
+  modalInput: {
+    height: 48, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 12,
+    paddingHorizontal: 14, fontSize: 15, color: COLORS.textPrimary,
+  },
+  colorPicker: { flexDirection: 'row', gap: 8, marginTop: 14, justifyContent: 'center' },
+  colorDot: { width: 28, height: 28, borderRadius: 14 },
+  colorDotActive: { borderWidth: 3, borderColor: COLORS.textPrimary },
+  modalCancelBtn: {
+    flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' },
+  modalCreateBtn: {
+    flex: 1, height: 44, borderRadius: 12, backgroundColor: COLORS.primary,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalCreateText: { fontSize: 14, color: '#FFFFFF', fontWeight: '600' },
 
   // -- List -------------------------------------------------------------------
   list: {

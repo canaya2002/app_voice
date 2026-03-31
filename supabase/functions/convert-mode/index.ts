@@ -15,9 +15,9 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_CONVERT_LIMITS = { free: 20, premium: Infinity };
-const IP_RATE_LIMIT = 10;
-const IP_RATE_WINDOW_MS = 60_000;
+const DAILY_CONVERT_LIMITS = { free: 10, premium: 50 };
+const IP_RATE_LIMIT = 20;
+const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
 // ── Max tokens per mode ────────────────────────────────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
@@ -48,7 +48,7 @@ setInterval(() => {
   }
 }, 5 * 60_000);
 
-function rateLimitResponse(message: string, limitType: "daily" | "per_minute", retryAfter: number | null, cors: Record<string, string>): Response {
+function rateLimitResponse(message: string, limitType: "daily" | "per_hour", retryAfter: number | null, cors: Record<string, string>): Response {
   return new Response(
     JSON.stringify({ error: "rate_limit_exceeded", message, retry_after: retryAfter, limit_type: limitType }),
     { status: 429, headers: { ...cors, "Content-Type": "application/json", ...(retryAfter != null ? { "Retry-After": String(retryAfter) } : {}) } },
@@ -67,33 +67,39 @@ function compressTranscript(text: string): string {
 function buildModePrompt(mode: string, transcript: string, speakerInstr: string, templateInstr: string, tone?: string): string {
   const ctx = [speakerInstr, templateInstr].filter(Boolean).join(" ");
   const compressed = compressTranscript(transcript);
-  const t = compressed.length > MAX_TRANSCRIPT_CHARS ? compressed.slice(0, MAX_TRANSCRIPT_CHARS) + "\n[Truncado]" : compressed;
+  const t = compressed.length > MAX_TRANSCRIPT_CHARS ? compressed.slice(0, MAX_TRANSCRIPT_CHARS) + "\n[Truncated]" : compressed;
+  const langInstr = "IMPORTANT: Respond in the SAME LANGUAGE as the transcript.";
 
   const prompts: Record<string, string> = {
-    summary: `Extrae un resumen ejecutivo.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título 6-8 palabras","summary":"resumen 3-5 oraciones","key_points":["punto"],"topics":["tema"],"speaker_highlights":[]}`,
-    tasks: `Extrae TODAS las tareas.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","tasks":[{"text":"tarea","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"frase","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
-    action_plan: `Convierte en plan de acción.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","objective":"objetivo","steps":[{"order":1,"action":"qué hacer","responsible":null,"depends_on":null,"estimated_effort":"bajo|medio|alto"}],"obstacles":[],"next_immediate_step":"primero","success_criteria":"criterio"}`,
-    clean_text: `Reescribe como texto limpio y profesional.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","clean_text":"texto reescrito sin muletillas","format":"narrative","word_count":0}`,
-    executive_report: `Genera reporte ejecutivo.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","context":"contexto","executive_summary":"resumen","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
-    ready_message: `Genera mensajes listos para enviar. Tono preferido: ${tone || "professional"}.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"asunto","context_note":"destinatario"}`,
-    study: `Convierte en material de estudio.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","summary":"resumen","key_concepts":[{"concept":"nombre","explanation":"explicación"}],"review_points":[],"probable_questions":[{"question":"pregunta","answer_hint":"pista"}],"mnemonics":[],"connections":[]}`,
-    ideas: `Analiza como exploración de ideas.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${t}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"nombre","core_idea":"idea central","opportunities":[{"opportunity":"oportunidad","potential":"alto|medio|bajo"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"paso","structured_version":"idea organizada"}`,
+    summary: `Extract an executive summary. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[]}`,
+    tasks: `Extract ALL tasks. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
+    action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria"}`,
+    clean_text: `Rewrite as clean, professional text. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","clean_text":"rewritten text without filler words","format":"narrative","word_count":0}`,
+    executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
+    ready_message: `Generate ready-to-send messages. Preferred tone: ${tone || "professional"}. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
+    study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}`,
+    ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}`,
   };
   return prompts[mode] || prompts["summary"];
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const ok = !origin || origin.includes("sythio") || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost") || origin.startsWith("exp://");
+  return {
+    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.com",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
+}
 
 serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Método no permitido" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown";
   const ipCheck = checkIpRateLimit(clientIp);
-  if (!ipCheck.allowed) return rateLimitResponse("Demasiadas solicitudes.", "per_minute", ipCheck.retryAfter, corsHeaders);
+  if (!ipCheck.allowed) return rateLimitResponse("Demasiadas solicitudes.", "per_hour", ipCheck.retryAfter, corsHeaders);
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -142,6 +148,10 @@ serve(async (req: Request) => {
       todayConversions = count ?? 0;
     }
     if (todayConversions >= dailyMax) {
+      await admin.from("analytics_events").insert({
+        user_id: user.id, event: "rate_limit_hit",
+        properties: { limit_type: "daily", endpoint: "convert-mode", plan, conversions: todayConversions, daily_max: dailyMax },
+      }).then(() => {});
       return rateLimitResponse(`Límite de ${dailyMax} reconversiones diarias alcanzado.`, "daily", null, corsHeaders);
     }
   }

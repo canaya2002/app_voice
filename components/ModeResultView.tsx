@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/lib/constants';
 import { hapticModeChange, hapticCopyClipboard } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
+import { supabase } from '@/lib/supabase';
 import type { OutputMode, MessageTone } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -518,6 +519,33 @@ function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId
     if (!loaded || customOrder === null) return;
     AsyncStorage.setItem(orderKey, JSON.stringify(customOrder)).catch(() => {});
   }, [customOrder, orderKey, loaded]);
+
+  // ── Debounced DB sync — persist task edits as source of truth ──
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      // Build updated tasks array reflecting all edits
+      const updatedTasks = tasks
+        .filter(t => !deletedSet.has(t.originalIndex))
+        .map(t => ({
+          text: editedTexts[t.originalIndex] ?? t.text,
+          priority: t.priority,
+          responsible: t.responsible,
+          type: t.type,
+          checked: checkedSet.has(t.originalIndex),
+        }));
+      // Update mode_results in DB (best-effort, no error shown)
+      supabase
+        .from('mode_results')
+        .update({ result: { ...result, tasks: updatedTasks } })
+        .eq('note_id', noteId)
+        .eq('mode', 'tasks')
+        .then(() => {});
+    }, 2000); // 2s debounce
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
+  }, [checkedSet, editedTexts, deletedSet, customOrder, loaded, tasks, noteId, result]);
 
   const toggleTask = useCallback((index: number) => {
     hapticModeChange();

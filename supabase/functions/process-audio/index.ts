@@ -16,10 +16,10 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_LIMITS = { free: 2, premium: Infinity };
+const DAILY_LIMITS = { free: 2, premium: 50 };
 const PREMIUM_MAX_DAILY_AUDIO_MINUTES = 120;
-const IP_RATE_LIMIT = 10;
-const IP_RATE_WINDOW_MS = 60_000;
+const IP_RATE_LIMIT = 20;
+const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
 // ── Max tokens per mode (tuned for Haiku output) ──────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
@@ -103,7 +103,7 @@ function compressTranscript(text: string): string {
 
 function rateLimitResponse(
   message: string,
-  limitType: "daily" | "per_minute",
+  limitType: "daily" | "per_hour",
   retryAfter: number | null,
   cors: Record<string, string>,
 ): Response {
@@ -125,14 +125,19 @@ function rateLimitResponse(
   );
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const ok = !origin || origin.includes("sythio") || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost") || origin.startsWith("exp://");
+  return {
+    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.com",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
+}
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -146,7 +151,7 @@ serve(async (req: Request) => {
     || "unknown";
   const ipCheck = checkIpRateLimit(clientIp);
   if (!ipCheck.allowed) {
-    return rateLimitResponse("Demasiadas solicitudes. Espera un momento.", "per_minute", ipCheck.retryAfter, corsHeaders);
+    return rateLimitResponse("Demasiadas solicitudes. Espera un momento.", "per_hour", ipCheck.retryAfter, corsHeaders);
   }
 
   // ── Auth ──
@@ -183,7 +188,7 @@ serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // ── Fetch profile + rate limits ──
-  const { data: profile } = await admin.from("profiles").select("plan, daily_count, daily_audio_minutes, last_reset_date").eq("id", user.id).single();
+  const { data: profile } = await admin.from("profiles").select("plan, daily_count, daily_audio_minutes, last_reset_date, custom_vocabulary").eq("id", user.id).single();
   if (!profile) {
     return new Response(JSON.stringify({ error: "Perfil no encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -200,18 +205,7 @@ serve(async (req: Request) => {
   }
 
   const plan = profile.plan || "free";
-
-  // ── Free: daily note count limit ──
-  if (plan === "free") {
-    const dailyMax = DAILY_LIMITS.free;
-    if (dailyCount >= dailyMax) {
-      await admin.from("analytics_events").insert({
-        user_id: user.id, event: "rate_limit_hit",
-        properties: { function: "process-audio", plan, daily_count: dailyCount, daily_max: dailyMax },
-      }).then(() => {});
-      return rateLimitResponse(`Has alcanzado el límite diario de ${dailyMax} notas. Actualiza a Premium para continuar.`, "daily", null, corsHeaders);
-    }
-  }
+  const dailyMax = DAILY_LIMITS[plan as keyof typeof DAILY_LIMITS] ?? DAILY_LIMITS.free;
 
   // ── Ownership check ──
   const { data: noteCheck } = await admin.from("notes").select("user_id, retry_count, audio_duration").eq("id", note_id).single();
@@ -238,9 +232,22 @@ serve(async (req: Request) => {
     );
   }
 
-  // ── Increment daily count NOW (before expensive work) ──
-  if (plan === "free") {
-    await admin.from("profiles").update({ daily_count: dailyCount + 1 }).eq("id", user.id);
+  // ── Atomic increment daily count (prevents race condition) ──
+  const { data: incrementResult } = await admin.rpc("increment_daily_count", {
+    user_id_input: user.id,
+    max_count: dailyMax,
+  });
+
+  if (!incrementResult) {
+    // Atomic check failed → limit was already reached
+    await admin.from("analytics_events").insert({
+      user_id: user.id, event: "rate_limit_hit",
+      properties: { limit_type: "daily", endpoint: "process-audio", plan, daily_max: dailyMax },
+    }).then(() => {});
+    const msg = plan === "free"
+      ? `Has alcanzado el límite diario de ${dailyMax} notas. Actualiza a Premium para continuar.`
+      : `Has alcanzado el límite diario de ${dailyMax} notas.`;
+    return rateLimitResponse(msg, "daily", null, corsHeaders);
   }
 
   // Increment retry_count
@@ -262,9 +269,14 @@ serve(async (req: Request) => {
     const formData = new FormData();
     formData.append("file", audioData, "audio.m4a");
     formData.append("model", "whisper-large-v3-turbo");
-    formData.append("language", "es");
+    // No language param → Whisper auto-detects (supports ES/EN/FR/PT/IT and 90+ more)
     formData.append("response_format", "verbose_json");
     formData.append("timestamp_granularities[]", "segment");
+    // Inject custom vocabulary as Whisper prompt hint
+    const vocab = Array.isArray(profile.custom_vocabulary) ? profile.custom_vocabulary as string[] : [];
+    if (vocab.length > 0) {
+      formData.append("prompt", vocab.join(", "));
+    }
 
     let whisperSegments: Array<{ start: number; end: number; text: string }> = [];
     let rawTranscript = "";
@@ -308,17 +320,17 @@ serve(async (req: Request) => {
     let segments: Array<{ start: number; end: number; speaker: string; text: string }> = [];
 
     try {
-      const speakerPrompt = `Analiza estos segmentos de audio y asigna un hablante a cada uno.
+      const speakerPrompt = `Analyze these audio segments and assign a speaker to each one. Respond in the SAME LANGUAGE as the transcript.
 
-Responde ÚNICAMENTE con JSON, sin texto adicional:
+Respond ONLY with JSON, no additional text:
 {"speakers_count":<int>,"is_conversation":<bool>,"segments":[{"start":<float>,"end":<float>,"speaker":"Speaker 1","text":"..."}]}
 
-Reglas:
-- Usa "Speaker 1", "Speaker 2", etc.
-- Si solo hay una voz: speakers_count=1, is_conversation=false
-- Agrupa segmentos consecutivos del mismo hablante
+Rules:
+- Use "Speaker 1", "Speaker 2", etc.
+- If only one voice: speakers_count=1, is_conversation=false
+- Group consecutive segments from the same speaker
 
-Segmentos:
+Segments:
 ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
 
       const speakerRaw = await callClaude(speakerPrompt, 600, claudeCtrl1.signal);
@@ -363,29 +375,31 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
       : transcriptForPrompt;
 
     const templateContexts: Record<string, string> = {
-      meeting: "Reunión. Prioriza acuerdos, decisiones y pendientes.",
-      client: "Cliente. Prioriza compromisos y próximos pasos.",
-      class: "Clase. Prioriza conceptos y material de estudio.",
-      brainstorm: "Brainstorming. Prioriza ideas y oportunidades.",
-      quick_idea: "Idea rápida.", task: "Tareas.", journal: "Diario.",
-      followup: "Seguimiento.", reflection: "Reflexión.",
+      meeting: "Meeting/Reunión. Prioritize agreements, decisions, and pending items.",
+      client: "Client call. Prioritize commitments and next steps.",
+      class: "Class/Lecture. Prioritize concepts and study material.",
+      brainstorm: "Brainstorming. Prioritize ideas and opportunities.",
+      quick_idea: "Quick idea.", task: "Tasks.", journal: "Journal.",
+      followup: "Follow-up.", reflection: "Reflection.",
     };
 
     const speakerInstr = isConversation
-      ? `Conversación entre ${speakersDetected} personas: ${speakers.map(s => s.default_name).join(", ")}. Atribuye a cada persona.`
+      ? `Conversation between ${speakersDetected} people: ${speakers.map(s => s.default_name).join(", ")}. Attribute to each person.`
       : "";
     const templateInstr = templateContexts[template] || "";
-    const ctx = [speakerInstr, templateInstr].filter(Boolean).join(" ");
+    const vocabInstr = vocab.length > 0 ? `Key terms/names in this audio: ${vocab.join(", ")}.` : "";
+    const ctx = [speakerInstr, templateInstr, vocabInstr].filter(Boolean).join(" ");
+    const langInstr = "IMPORTANT: Respond in the SAME LANGUAGE as the transcript. If the transcript is in Spanish, respond in Spanish. If in English, respond in English. Etc.";
 
     const modePrompts: Record<string, string> = {
-      summary: `Extrae un resumen ejecutivo de esta transcripción.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título 6-8 palabras","summary":"resumen 3-5 oraciones","key_points":["punto"],"topics":["tema"],"speaker_highlights":[]}`,
-      tasks: `Extrae TODAS las tareas de esta transcripción.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","tasks":[{"text":"tarea","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"frase","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
-      action_plan: `Convierte en plan de acción.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","objective":"objetivo","steps":[{"order":1,"action":"qué hacer","responsible":null,"depends_on":null,"estimated_effort":"bajo|medio|alto"}],"obstacles":[],"next_immediate_step":"primero","success_criteria":"criterio"}`,
-      clean_text: `Reescribe como texto limpio y profesional.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","clean_text":"texto reescrito sin muletillas","format":"narrative","word_count":0}`,
-      executive_report: `Genera reporte ejecutivo.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","context":"contexto","executive_summary":"resumen","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
-      ready_message: `Genera mensajes listos para enviar.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"asunto","context_note":"destinatario"}`,
-      study: `Convierte en material de estudio.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"título","summary":"resumen","key_concepts":[{"concept":"nombre","explanation":"explicación"}],"review_points":[],"probable_questions":[{"question":"pregunta","answer_hint":"pista"}],"mnemonics":[],"connections":[]}`,
-      ideas: `Analiza como exploración de ideas.${ctx ? " " + ctx : ""}\n\nTranscripción:\n"""\n${truncated}\n"""\n\nResponde ÚNICAMENTE con JSON:\n{"title_suggestion":"nombre","core_idea":"idea central","opportunities":[{"opportunity":"oportunidad","potential":"alto|medio|bajo"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"paso","structured_version":"idea organizada"}`,
+      summary: `Extract an executive summary from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[]}`,
+      tasks: `Extract ALL tasks from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
+      action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria"}`,
+      clean_text: `Rewrite as clean, professional text. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","clean_text":"rewritten text without filler words","format":"narrative","word_count":0}`,
+      executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
+      ready_message: `Generate ready-to-send messages. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
+      study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}`,
+      ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}`,
     };
 
     const claudeCtrl2 = new AbortController();

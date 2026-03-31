@@ -252,15 +252,27 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
               </Text>
             ) : null}
 
-            {/* Mini waveform */}
+            {/* Info chips */}
             {note.status === 'done' && (
-              <View style={styles.waveformRow}>
-                {generateWaveformBars(note.id, BAR_COUNT).map((h, i) => (
-                  <View
-                    key={i}
-                    style={[styles.waveformBar, { height: Math.max(3, h * MAX_WAVEFORM_HEIGHT) }]}
-                  />
-                ))}
+              <View style={styles.infoChipRow}>
+                {note.audio_duration > 0 && (
+                  <View style={styles.infoChip}>
+                    <Ionicons name="time-outline" size={11} color={COLORS.textMuted} />
+                    <Text style={styles.infoChipText}>{formatDurationChip(note.audio_duration)}</Text>
+                  </View>
+                )}
+                {note.is_conversation && note.speakers_detected > 1 && (
+                  <View style={styles.infoChip}>
+                    <Ionicons name="people-outline" size={11} color={COLORS.textMuted} />
+                    <Text style={styles.infoChipText}>{note.speakers_detected}</Text>
+                  </View>
+                )}
+                {note.tasks?.length > 0 && (
+                  <View style={styles.infoChip}>
+                    <Ionicons name="checkbox-outline" size={11} color={COLORS.textMuted} />
+                    <Text style={styles.infoChipText}>{note.tasks.length}</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -345,10 +357,15 @@ const styles = StyleSheet.create({
 
   // -- Card ------------------------------------------------------------------
   cardOuter: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   card: {
     position: 'relative',
@@ -381,19 +398,25 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // -- Waveform row ----------------------------------------------------------
-  waveformRow: {
+  // -- Info chips -----------------------------------------------------------
+  infoChipRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 2,
+    gap: 6,
     marginTop: 10,
-    height: MAX_WAVEFORM_HEIGHT,
   },
-  waveformBar: {
-    flex: 1,
-    borderRadius: 1.5,
-    backgroundColor: COLORS.borderLight,
-    maxWidth: 4,
+  infoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  infoChipText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: COLORS.textMuted,
   },
 
   // -- Badge row -------------------------------------------------------------

@@ -25,6 +25,7 @@ export type AnalyticsEvent =
   | 'result_copied'
   | 'result_exported_pdf'
   | 'result_exported_excel'
+  | 'result_exported_srt'
   | 'result_shared'
   | 'task_checked'
   | 'task_edited'
@@ -54,7 +55,9 @@ export type AnalyticsEvent =
   | 'data_exported'
   | 'app_opened'
   | 'onboarding_completed'
-  | 'note_retry';
+  | 'note_retry'
+  | 'result_exported_docx'
+  | 'share_link_created';
 
 type EventProperties = Record<string, string | number | boolean | null>;
 
@@ -136,12 +139,15 @@ export function trackModeGenerated(mode: string, noteId: string): void {
   track('output_mode_generated', { mode, note_id: noteId });
 }
 
-export function trackExport(format: 'pdf' | 'excel' | 'copy' | 'share', mode: string): void {
+export function trackExport(format: 'pdf' | 'excel' | 'copy' | 'share' | 'srt' | 'docx' | 'share_link', mode: string): void {
   const eventMap = {
     pdf: 'result_exported_pdf',
     excel: 'result_exported_excel',
     copy: 'result_copied',
     share: 'result_shared',
+    srt: 'result_exported_srt',
+    docx: 'result_exported_docx',
+    share_link: 'share_link_created',
   } as const;
   track(eventMap[format], { mode });
 }

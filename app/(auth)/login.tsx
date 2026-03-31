@@ -4,8 +4,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Alert,
   ScrollView,
@@ -23,6 +21,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { COLORS } from '@/lib/constants';
 import { shadows } from '@/lib/styles';
 import { validateEmail } from '@/lib/validation';
@@ -35,7 +34,6 @@ import AnimatedPressable from '@/components/AnimatedPressable';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [focusedField, setFocusedField] = useState<string | null>(null);
   const { login, loading, error, clearError } = useAuthStore();
   const passwordRef = useRef<TextInput>(null);
 
@@ -78,13 +76,12 @@ export default function LoginScreen() {
       <FloatingOrb size={350} color={COLORS.primaryLight} top={-60} right={-100} />
       <FloatingOrb size={250} color={COLORS.primary} top={500} left={-80} delay={400} />
 
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
         <ScrollView
+          style={styles.container}
           contentContainerStyle={styles.inner}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {/* Title */}
@@ -110,17 +107,8 @@ export default function LoginScreen() {
           ) : null}
 
           {/* Email input */}
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === 'email' && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={focusedField === 'email' ? COLORS.primary : COLORS.textMuted}
-            />
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color={COLORS.textMuted} />
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -134,23 +122,12 @@ export default function LoginScreen() {
               blurOnSubmit={false}
               value={email}
               onChangeText={setEmail}
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           {/* Password input */}
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === 'password' && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={focusedField === 'password' ? COLORS.primary : COLORS.textMuted}
-            />
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color={COLORS.textMuted} />
             <TextInput
               ref={passwordRef}
               style={styles.input}
@@ -162,8 +139,6 @@ export default function LoginScreen() {
               onSubmitEditing={handleLogin}
               value={password}
               onChangeText={setPassword}
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField(null)}
             />
           </View>
 
@@ -197,7 +172,8 @@ export default function LoginScreen() {
                 Alert.alert('Recuperar contraseña', 'Ingresa tu email arriba primero.');
                 return;
               }
-              const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+              const redirectUrl = Linking.createURL('auth-callback');
+              const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: redirectUrl });
               if (resetError) {
                 showToast('No se pudo enviar el enlace', 'error');
               } else {
@@ -223,7 +199,6 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </Animated.View>
         </ScrollView>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -279,14 +254,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-  inputContainerFocused: {
-    borderColor: COLORS.primary,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   input: {
     flex: 1,
     fontSize: 16,
@@ -295,7 +262,7 @@ const styles = StyleSheet.create({
   },
   buttonOuter: {
     marginTop: 32,
-    ...shadows.purple,
+    ...shadows.brand,
   },
   button: {
     height: 58,

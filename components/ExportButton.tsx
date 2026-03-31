@@ -9,11 +9,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
+import * as Clipboard from 'expo-clipboard';
 import { COLORS, getModeConfig } from '@/lib/constants';
-import { exportPDF, copyToClipboard, buildPlainText } from '@/lib/export';
+import { exportPDF, exportDOCX, exportSRT, copyToClipboard, buildPlainText } from '@/lib/export';
 import { exportToExcel } from '@/lib/export-excel';
 import { trackExport } from '@/lib/analytics';
+import { useNotesStore } from '@/stores/notesStore';
+import { showToast } from '@/components/Toast';
 import type { Note, OutputMode } from '@/types';
+
+const WEB_BASE_URL = 'https://sythio-web.vercel.app';
 
 interface ExportButtonProps {
   note: Note;
@@ -67,6 +72,53 @@ export default function ExportButton({ note, activeMode, activeModeResult }: Exp
     }
   };
 
+  const handleExportSRT = async () => {
+    setLoading(true);
+    try {
+      await exportSRT(note);
+      trackExport('srt', modeStr);
+    } catch {
+      // SRT export failed
+    } finally {
+      setLoading(false);
+      setVisible(false);
+    }
+  };
+
+  const handleExportDOCX = async () => {
+    setLoading(true);
+    try {
+      await exportDOCX(note, activeMode, activeModeResult);
+      trackExport('docx', modeStr);
+    } catch {
+      // DOCX export failed
+    } finally {
+      setLoading(false);
+      setVisible(false);
+    }
+  };
+
+  const handleShareLink = async () => {
+    try {
+      let token = note.share_token;
+      if (!token) {
+        token = await useNotesStore.getState().generateShareLink(note.id);
+      }
+      if (token) {
+        const url = `${WEB_BASE_URL}/shared/${token}`;
+        await Clipboard.setStringAsync(url);
+        showToast('Link copiado al portapapeles', 'success');
+        trackExport('share_link', modeStr);
+      } else {
+        showToast('Error al generar link', 'error');
+      }
+    } catch {
+      showToast('Error al generar link', 'error');
+    } finally {
+      setVisible(false);
+    }
+  };
+
   const handleExportExcel = async () => {
     if (!activeMode || !activeModeResult) return;
     setLoading(true);
@@ -103,6 +155,17 @@ export default function ExportButton({ note, activeMode, activeModeResult }: Exp
 
             <TouchableOpacity
               style={styles.option}
+              onPress={handleShareLink}
+            >
+              <Ionicons name="link-outline" size={22} color={COLORS.primary} />
+              <View style={styles.optionText}>
+                <Text style={styles.optionTitle}>Copiar link para compartir</Text>
+                <Text style={styles.optionDesc}>Cualquiera con el link puede ver esta nota</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.option}
               onPress={handleExportPDF}
               disabled={loading}
             >
@@ -110,6 +173,18 @@ export default function ExportButton({ note, activeMode, activeModeResult }: Exp
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle}>Compartir PDF</Text>
                 <Text style={styles.optionDesc}>Genera un PDF con toda la información</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.option}
+              onPress={handleExportDOCX}
+              disabled={loading}
+            >
+              <Ionicons name="document-text-outline" size={22} color={COLORS.primary} />
+              <View style={styles.optionText}>
+                <Text style={styles.optionTitle}>Exportar Word</Text>
+                <Text style={styles.optionDesc}>Documento editable para Word/Google Docs</Text>
               </View>
             </TouchableOpacity>
 
@@ -125,6 +200,20 @@ export default function ExportButton({ note, activeMode, activeModeResult }: Exp
                   <Text style={styles.optionDesc}>
                     {modeConfig!.label} en formato de hoja de cálculo
                   </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {note.segments && note.segments.length > 0 && (
+              <TouchableOpacity
+                style={styles.option}
+                onPress={handleExportSRT}
+                disabled={loading}
+              >
+                <Ionicons name="text-outline" size={22} color={COLORS.primary} />
+                <View style={styles.optionText}>
+                  <Text style={styles.optionTitle}>Exportar SRT</Text>
+                  <Text style={styles.optionDesc}>Subtítulos con timestamps y hablantes</Text>
                 </View>
               </TouchableOpacity>
             )}

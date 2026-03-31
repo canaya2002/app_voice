@@ -239,6 +239,104 @@ export async function copyText(text: string): Promise<void> {
   showToast('Copiado al portapapeles', 'success');
 }
 
+// ── SRT export ────────────────────────────────────────────────────────────
+
+function formatSrtTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+export function buildSrtText(note: Note): string {
+  if (!note.segments || note.segments.length === 0) {
+    // Fallback: single subtitle with full transcript
+    return `1\n00:00:00,000 --> 00:00:30,000\n${note.transcript}\n`;
+  }
+
+  return note.segments
+    .map((seg, i) => {
+      const speaker = note.speakers.length > 1
+        ? `${note.speakers.find((sp) => sp.id === seg.speaker)?.custom_name ?? seg.speaker}: `
+        : '';
+      return `${i + 1}\n${formatSrtTime(seg.start)} --> ${formatSrtTime(seg.end)}\n${speaker}${seg.text}\n`;
+    })
+    .join('\n');
+}
+
+export async function exportSRT(note: Note): Promise<void> {
+  const srt = buildSrtText(note);
+  const { File, Paths } = await import('expo-file-system');
+  const safeName = note.title.replace(/[^a-zA-Z0-9áéíóúñ ]/g, '').trim().replace(/\s+/g, '-').slice(0, 40);
+  const file = new File(Paths.cache, `${safeName || 'sythio'}.srt`);
+  file.create();
+  await file.write(srt);
+
+  const isAvailable = await Sharing.isAvailableAsync();
+  if (isAvailable) {
+    await Sharing.shareAsync(file.uri, { mimeType: 'application/x-subrip', dialogTitle: 'Exportar subtítulos' });
+    showToast('SRT generado', 'success');
+  }
+}
+
+// ── DOCX export ──────────────────────────────────────────────────────────
+
+const DOCX_STYLES = `
+  body { font-family: Calibri, Arial, sans-serif; padding: 40px; color: #1a1a1a; line-height: 1.6; }
+  h1 { font-size: 22pt; margin-bottom: 6px; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  h2 { font-size: 13pt; color: #333; margin-top: 18pt; border-bottom: 1.5pt solid #eee; padding-bottom: 4pt; }
+  ul { padding-left: 18pt; }
+  li { margin-bottom: 4pt; font-size: 11pt; }
+  p { font-size: 11pt; }
+  table { width: 100%; border-collapse: collapse; margin: 10pt 0; }
+  th { text-align: left; font-size: 9pt; text-transform: uppercase; color: #888; padding: 6pt; border-bottom: 2pt solid #ddd; }
+  td { padding: 6pt; border-bottom: 1pt solid #eee; font-size: 10pt; }
+  .card { background: #f5f5f5; padding: 12pt; border-left: 4pt solid #8FD3FF; margin: 8pt 0; }
+  .footer { margin-top: 30pt; text-align: center; color: #bbb; font-size: 9pt; }
+`;
+
+export async function exportDOCX(
+  note: Note,
+  mode?: OutputMode,
+  modeResult?: Record<string, unknown>,
+): Promise<void> {
+  const modeLabel = mode ? getModeConfig(mode).label : '';
+  const body = mode && modeResult
+    ? buildModeHtml(mode, modeResult)
+    : `
+      <h2>Resumen</h2><p>${escapeHtml(note.summary)}</p>
+      <h2>Puntos clave</h2><ul>${note.key_points.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+      <h2>Tareas</h2><ul>${note.tasks.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+      <h2>Transcripción</h2><p>${escapeHtml(note.clean_text).replace(/\n/g, '<br/>')}</p>
+    `;
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"/><title>${escapeHtml(note.title)}</title>
+<style>${DOCX_STYLES}</style>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+</head><body>
+  <h1>${escapeHtml(note.title)}</h1>
+  <p class="meta">${formatDate(note.created_at)} · ${formatDurationLong(note.audio_duration)}</p>
+  ${modeLabel ? `<p><strong>${escapeHtml(modeLabel)}</strong></p>` : ''}
+  ${body}
+  <div class="footer">Generado con Sythio</div>
+</body></html>`;
+
+  const { File, Paths } = await import('expo-file-system');
+  const safeName = note.title.replace(/[^a-zA-Z0-9áéíóúñ ]/g, '').trim().replace(/\s+/g, '-').slice(0, 40);
+  const file = new File(Paths.cache, `${safeName || 'sythio'}.doc`);
+  file.create();
+  await file.write(html);
+
+  const isAvailable = await Sharing.isAvailableAsync();
+  if (isAvailable) {
+    await Sharing.shareAsync(file.uri, { mimeType: 'application/msword', dialogTitle: 'Exportar documento Word' });
+    showToast('Documento Word generado', 'success');
+  }
+}
+
 export async function exportPDF(
   note: Note,
   mode?: OutputMode,

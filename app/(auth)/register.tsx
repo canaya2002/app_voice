@@ -4,8 +4,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Alert,
   ScrollView,
@@ -34,8 +32,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [focusedField, setFocusedField] = useState<string | null>(null);
-  const { register, loading, error, clearError } = useAuthStore();
+  const { register, resendConfirmation, loading, error, clearError } = useAuthStore();
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
@@ -74,7 +71,27 @@ export default function RegisterScreen() {
       return;
     }
     clearError();
-    await register(email.trim(), password);
+    const result = await register(email.trim(), password);
+    if (result === 'confirm_email') {
+      Alert.alert(
+        'Revisa tu correo',
+        'Te enviamos un enlace de confirmación. Abre tu email y confirma tu cuenta para iniciar sesión.',
+        [
+          {
+            text: 'Reenviar correo',
+            onPress: async () => {
+              const ok = await resendConfirmation(email.trim());
+              if (ok) {
+                Alert.alert('Correo reenviado', 'Revisa tu bandeja de entrada y spam.');
+              } else {
+                Alert.alert('Error', 'No se pudo reenviar. Intenta en unos minutos.');
+              }
+            },
+          },
+          { text: 'Ir a iniciar sesión', onPress: () => router.replace('/(auth)/login') },
+        ],
+      );
+    }
   };
 
   return (
@@ -83,13 +100,12 @@ export default function RegisterScreen() {
       <FloatingOrb size={350} color={COLORS.primaryLight} top={-60} right={-100} />
       <FloatingOrb size={250} color={COLORS.primary} top={500} left={-80} delay={400} />
 
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
         <ScrollView
+          style={styles.container}
           contentContainerStyle={styles.inner}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {/* Title */}
@@ -115,17 +131,8 @@ export default function RegisterScreen() {
           ) : null}
 
           {/* Email input */}
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === 'email' && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={focusedField === 'email' ? COLORS.primary : COLORS.textMuted}
-            />
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color={COLORS.textMuted} />
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -139,23 +146,12 @@ export default function RegisterScreen() {
               blurOnSubmit={false}
               value={email}
               onChangeText={setEmail}
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           {/* Password input */}
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === 'password' && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={focusedField === 'password' ? COLORS.primary : COLORS.textMuted}
-            />
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color={COLORS.textMuted} />
             <TextInput
               ref={passwordRef}
               style={styles.input}
@@ -168,27 +164,12 @@ export default function RegisterScreen() {
               blurOnSubmit={false}
               value={password}
               onChangeText={setPassword}
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           {/* Confirm password input */}
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === 'confirmPassword' && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={20}
-              color={
-                focusedField === 'confirmPassword'
-                  ? COLORS.primary
-                  : COLORS.textMuted
-              }
-            />
+          <View style={styles.inputContainer}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.textMuted} />
             <TextInput
               ref={confirmRef}
               style={styles.input}
@@ -200,8 +181,6 @@ export default function RegisterScreen() {
               onSubmitEditing={handleRegister}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              onFocus={() => setFocusedField('confirmPassword')}
-              onBlur={() => setFocusedField(null)}
             />
           </View>
 
@@ -246,7 +225,6 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </Animated.View>
         </ScrollView>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -302,14 +280,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-  inputContainerFocused: {
-    borderColor: COLORS.primary,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   input: {
     flex: 1,
     fontSize: 16,
@@ -318,7 +288,7 @@ const styles = StyleSheet.create({
   },
   buttonOuter: {
     marginTop: 32,
-    ...shadows.purple,
+    ...shadows.brand,
   },
   button: {
     height: 58,

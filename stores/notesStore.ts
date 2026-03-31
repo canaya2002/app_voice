@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { deleteAudioFile } from '@/lib/transcription';
-import type { Note, ModeResult, OutputMode, MessageTone, SpeakerInfo } from '@/types';
+import type { Note, ModeResult, OutputMode, MessageTone, SpeakerInfo, Folder } from '@/types';
 
 interface NotesState {
   notes: Note[];
+  trashedNotes: Note[];
+  folders: Folder[];
   currentNote: Note | null;
   modeResults: ModeResult[];
   loading: boolean;
@@ -17,6 +19,19 @@ interface NotesState {
   createNote: (userId: string) => Promise<string>;
   updateNote: (id: string, data: Partial<Note>) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
+  // Trash
+  softDeleteNote: (id: string) => Promise<void>;
+  restoreNote: (id: string) => Promise<void>;
+  permanentDeleteNote: (id: string) => Promise<void>;
+  fetchTrashedNotes: () => Promise<void>;
+  // Folders
+  fetchFolders: () => Promise<void>;
+  createFolder: (name: string, color: string) => Promise<Folder | null>;
+  deleteFolder: (id: string) => Promise<void>;
+  moveNoteToFolder: (noteId: string, folderId: string | null) => Promise<void>;
+  // Sharing
+  generateShareLink: (noteId: string) => Promise<string | null>;
+  removeShareLink: (noteId: string) => Promise<void>;
   convertMode: (noteId: string, targetMode: OutputMode, tone?: MessageTone) => Promise<ModeResult | null>;
   updateSpeakers: (noteId: string, speakers: SpeakerInfo[]) => Promise<void>;
   subscribeToNote: (id: string) => () => void;
@@ -26,7 +41,6 @@ interface NotesState {
   setCurrentNote: (note: Note | null) => void;
   clearError: () => void;
   reset: () => void;
-  /** Track active channel unsubscribers so logout can clean them all */
   _activeUnsubs: Set<() => void>;
   _registerUnsub: (unsub: () => void) => void;
 }
@@ -43,11 +57,29 @@ function parseNote(row: Record<string, unknown>): Note {
     primary_mode: (row.primary_mode as Note['primary_mode']) ?? 'summary',
     template: row.template as Note['template'],
     retry_count: typeof row.retry_count === 'number' ? row.retry_count : 0,
+  deleted_at: typeof row.deleted_at === 'string' ? row.deleted_at : null,
+  folder_id: typeof row.folder_id === 'string' ? row.folder_id : null,
+  share_token: typeof row.share_token === 'string' ? row.share_token : null,
   };
+}
+
+function generateToken(): string {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${label} (${ms}ms)`)), ms)),
+  ]);
 }
 
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
+  trashedNotes: [],
+  folders: [],
   currentNote: null,
   modeResults: [],
   loading: false,
@@ -63,6 +95,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       .from('notes')
       .select('*')
       .eq('user_id', session.user.id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -122,21 +155,148 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   },
 
   deleteNote: async (id: string) => {
-    const note = get().notes.find((n) => n.id === id);
+    // Legacy hard delete - now calls softDeleteNote
+    await get().softDeleteNote(id);
+  },
+
+  softDeleteNote: async (id: string) => {
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) { set({ error: 'No se pudo eliminar la nota.' }); return; }
+
+    set((state) => ({
+      notes: state.notes.filter((n) => n.id !== id),
+      currentNote: state.currentNote?.id === id ? null : state.currentNote,
+    }));
+  },
+
+  restoreNote: async (id: string) => {
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: null })
+      .eq('id', id);
+
+    if (error) { set({ error: 'No se pudo restaurar la nota.' }); return; }
+
+    set((state) => ({
+      trashedNotes: state.trashedNotes.filter((n) => n.id !== id),
+    }));
+    // Refresh main notes list
+    get().fetchNotes();
+  },
+
+  permanentDeleteNote: async (id: string) => {
+    const note = get().trashedNotes.find((n) => n.id === id);
     const { error } = await supabase.from('notes').delete().eq('id', id);
 
-    if (error) {
-      set({ error: 'No se pudo eliminar la nota.' });
-      return;
-    }
+    if (error) { set({ error: 'No se pudo eliminar permanentemente.' }); return; }
 
     if (note?.audio_url) {
       try { await deleteAudioFile(note.audio_url); } catch { /* best-effort */ }
     }
 
     set((state) => ({
-      notes: state.notes.filter((n) => n.id !== id),
-      currentNote: state.currentNote?.id === id ? null : state.currentNote,
+      trashedNotes: state.trashedNotes.filter((n) => n.id !== id),
+    }));
+  },
+
+  fetchTrashedNotes: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const { data } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+
+    const trashed = (data ?? []).map((row) => parseNote(row as Record<string, unknown>));
+    set({ trashedNotes: trashed });
+  },
+
+  // ── Folders ──────────────────────────────────────────────────────────────
+
+  fetchFolders: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const { data } = await supabase
+      .from('folders')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true });
+
+    set({ folders: (data ?? []) as Folder[] });
+  },
+
+  createFolder: async (name: string, color: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+    const { data, error } = await supabase
+      .from('folders')
+      .insert({ user_id: session.user.id, name, color })
+      .select()
+      .single();
+
+    if (error || !data) return null;
+    const folder = data as Folder;
+    set((state) => ({ folders: [...state.folders, folder] }));
+    return folder;
+  },
+
+  deleteFolder: async (id: string) => {
+    // Move all notes out of folder first
+    await supabase.from('notes').update({ folder_id: null }).eq('folder_id', id);
+    await supabase.from('folders').delete().eq('id', id);
+    set((state) => ({ folders: state.folders.filter((f) => f.id !== id) }));
+    get().fetchNotes();
+  },
+
+  moveNoteToFolder: async (noteId: string, folderId: string | null) => {
+    const { error } = await supabase
+      .from('notes')
+      .update({ folder_id: folderId })
+      .eq('id', noteId);
+
+    if (!error) {
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === noteId ? { ...n, folder_id: folderId } : n),
+        currentNote: state.currentNote?.id === noteId
+          ? { ...state.currentNote, folder_id: folderId }
+          : state.currentNote,
+      }));
+    }
+  },
+
+  // ── Sharing ──────────────────────────────────────────────────────────────
+
+  generateShareLink: async (noteId: string) => {
+    const token = generateToken();
+    const { error } = await supabase
+      .from('notes')
+      .update({ share_token: token })
+      .eq('id', noteId);
+
+    if (error) return null;
+
+    set((state) => ({
+      notes: state.notes.map((n) => n.id === noteId ? { ...n, share_token: token } : n),
+      currentNote: state.currentNote?.id === noteId
+        ? { ...state.currentNote, share_token: token }
+        : state.currentNote,
+    }));
+    return token;
+  },
+
+  removeShareLink: async (noteId: string) => {
+    await supabase.from('notes').update({ share_token: null }).eq('id', noteId);
+    set((state) => ({
+      notes: state.notes.map((n) => n.id === noteId ? { ...n, share_token: null } : n),
+      currentNote: state.currentNote?.id === noteId
+        ? { ...state.currentNote, share_token: null }
+        : state.currentNote,
     }));
   },
 
@@ -153,9 +313,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     }
 
     try {
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('convert-mode', {
-        body: { note_id: noteId, target_mode: targetMode, tone },
-      });
+      const { data: fnData, error: fnError } = await withTimeout(
+        supabase.functions.invoke('convert-mode', {
+          body: { note_id: noteId, target_mode: targetMode, tone },
+        }),
+        60_000,
+        'convert-mode',
+      );
 
       if (fnError) throw new Error('Error al convertir.');
 
@@ -302,6 +466,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       try { unsub(); } catch { /* ignore */ }
     }
     unsubs.clear();
-    set({ notes: [], currentNote: null, modeResults: [], loading: false, converting: false, convertingMode: null, error: null });
+    set({ notes: [], trashedNotes: [], folders: [], currentNote: null, modeResults: [], loading: false, converting: false, convertingMode: null, error: null });
   },
 }));

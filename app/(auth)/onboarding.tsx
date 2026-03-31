@@ -102,12 +102,13 @@ function PulseRing({ size, delayMs }: { size: number; delayMs: number }) {
 
 /* ── Page 1: Mic illustration ──────────────────────────── */
 function MicIllustration() {
+  const isDark = useIsDark();
   return (
     <View style={illustrationStyles.centered}>
       <PulseRing size={180} delayMs={0} />
       <PulseRing size={160} delayMs={400} />
       <PulseRing size={140} delayMs={800} />
-      <View style={illustrationStyles.micCircle}>
+      <View style={[illustrationStyles.micCircle, { backgroundColor: isDark ? DARK_COLORS.surfaceAlt : COLORS.surfaceAlt }]}>
         <Ionicons name="mic" size={80} color={COLORS.recording} />
       </View>
     </View>
@@ -146,6 +147,7 @@ function SparkleIcon() {
 }
 
 function BarsIllustration() {
+  const isDark = useIsDark();
   return (
     <View style={illustrationStyles.barsContainer}>
       <SparkleIcon />
@@ -157,7 +159,7 @@ function BarsIllustration() {
             width: w,
             height: 10,
             borderRadius: 5,
-            backgroundColor: COLORS.primary,
+            backgroundColor: isDark ? DARK_COLORS.primary : COLORS.primary,
             opacity: BAR_OPACITIES[i],
             marginBottom: i < BAR_WIDTHS.length - 1 ? 10 : 0,
           }}
@@ -179,9 +181,11 @@ const NODE_OFFSETS = [
 function GrowingLine({
   index,
   position,
+  color,
 }: {
   index: number;
   position: (typeof NODE_OFFSETS)[number];
+  color: string;
 }) {
   const lineWidth = useSharedValue(0);
 
@@ -205,7 +209,7 @@ function GrowingLine({
         {
           position: 'absolute',
           height: 2,
-          backgroundColor: NODE_COLORS[index],
+          backgroundColor: color,
           opacity: 0.4,
           transform: [
             { rotate: `${isTop ? '' : '-'}${isLeft ? '-' : ''}45deg` },
@@ -220,11 +224,13 @@ function GrowingLine({
 }
 
 function NetworkIllustration() {
+  const isDark = useIsDark();
+  const nodeColors = [isDark ? DARK_COLORS.primary : COLORS.primary, COLORS.info, COLORS.success, COLORS.warning];
   return (
     <View style={illustrationStyles.networkContainer}>
-      <View style={illustrationStyles.centerNode} />
+      <View style={[illustrationStyles.centerNode, { backgroundColor: isDark ? DARK_COLORS.primary : COLORS.primary }]} />
       {NODE_OFFSETS.map((pos, i) => (
-        <GrowingLine key={`line-${i}`} index={i} position={pos} />
+        <GrowingLine key={`line-${i}`} index={i} position={pos} color={nodeColors[i]} />
       ))}
       {NODE_OFFSETS.map((pos, i) => (
         <RNAnimated.View
@@ -236,7 +242,7 @@ function NetworkIllustration() {
               width: 20,
               height: 20,
               borderRadius: 10,
-              backgroundColor: NODE_COLORS[i],
+              backgroundColor: nodeColors[i],
             },
             pos as object,
           ]}
@@ -346,7 +352,7 @@ export default function OnboardingScreen() {
         <View style={styles.headerRow}>
           {!isLastPage ? (
             <AnimatedPressable onPress={handleComplete} style={styles.skipButton}>
-              <Text style={styles.skipText}>Saltar</Text>
+              <Text style={[styles.skipText, { color: themeColors.textSecondary }]}>Saltar</Text>
             </AnimatedPressable>
           ) : (
             <View />
@@ -395,7 +401,9 @@ export default function OnboardingScreen() {
                 key={index}
                 style={[
                   styles.dot,
-                  currentPage === index ? styles.dotActive : styles.dotInactive,
+                  currentPage === index
+                    ? [styles.dotActive, { backgroundColor: isDark ? COLORS.primaryLight : COLORS.primary }]
+                    : [styles.dotInactive, { borderColor: isDark ? DARK_COLORS.border : COLORS.border }],
                 ]}
               />
             ))}
@@ -409,7 +417,7 @@ export default function OnboardingScreen() {
               scaleDown={0.96}
             >
               <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
+                colors={isDark ? [COLORS.primaryLight, '#5BA8D0'] : [COLORS.primary, COLORS.primaryDark]}
                 style={styles.startButton}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -420,7 +428,7 @@ export default function OnboardingScreen() {
           ) : (
             <AnimatedPressable onPress={handleNext} style={styles.nextButton}>
               <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
+                colors={isDark ? [COLORS.primaryLight, '#5BA8D0'] : [COLORS.primary, COLORS.primaryDark]}
                 style={styles.nextButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -520,7 +528,7 @@ const styles = StyleSheet.create({
   },
   startButtonOuter: {
     width: '100%',
-    ...shadows.purple,
+    ...shadows.brand,
   },
   startButton: {
     width: '100%',
@@ -535,7 +543,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   nextButton: {
-    ...shadows.purple,
+    ...shadows.brand,
   },
   nextButtonGradient: {
     width: 56,

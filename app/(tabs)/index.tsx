@@ -14,16 +14,19 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  withDelay,
   Easing,
   FadeInDown,
+  FadeInUp,
   FadeIn,
+  ZoomIn,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { COLORS, LIMITS, getTemplateConfig, useThemeColors } from '@/lib/constants';
-import { typography, shadows } from '@/lib/styles';
+import { COLORS, LIMITS, getTemplateConfig } from '@/lib/constants';
+import { typography } from '@/lib/styles';
 import AudioRecorder from '@/components/AudioRecorder';
 import LoadingProcessor from '@/components/LoadingProcessor';
 import TemplateSelector from '@/components/TemplateSelector';
@@ -34,7 +37,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNotesStore } from '@/stores/notesStore';
 import { useRecordingStore } from '@/stores/recordingStore';
 import { uploadAudioAndProcess } from '@/lib/transcription';
-import { watchNoteProcessing, type ProcessingCallbacks } from '@/lib/processing-watcher';
+import { watchNoteProcessing } from '@/lib/processing-watcher';
 import { supabase } from '@/lib/supabase';
 import { showToast } from '@/components/Toast';
 import { hapticButtonPress } from '@/lib/haptics';
@@ -42,6 +45,7 @@ import { track } from '@/lib/analytics';
 import { canCreateNote, getRemainingNotes } from '@/lib/gates';
 import { DailyLimitBanner } from '@/components/StateViews';
 import Paywall from '@/components/Paywall';
+import AIChatModal from '@/components/AIChatModal';
 import type { OutputMode, NoteTemplate } from '@/types';
 
 const MOTIVATIONAL = [
@@ -52,7 +56,6 @@ const MOTIVATIONAL = [
 ];
 
 export default function HomeScreen() {
-  const colors = useThemeColors();
   const { user, fetchProfile } = useAuthStore();
   const { notes, createNote, subscribeToNote } = useNotesStore();
   const { selectedTemplate, selectedMode, setSelectedTemplate, setSelectedMode } = useRecordingStore();
@@ -63,10 +66,10 @@ export default function HomeScreen() {
   const [uploading, setUploading] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const [watcherHandle, setWatcherHandle] = useState<{ cancel: () => void } | null>(null);
 
-  // Cleanup watcher on unmount
   useEffect(() => {
     return () => { watcherHandle?.cancel(); };
   }, [watcherHandle]);
@@ -77,35 +80,67 @@ export default function HomeScreen() {
   const totalTasks = notes.reduce((a, n) => a + (n.tasks?.length || 0), 0);
   const notesWithTasks = notes.filter((n) => n.status === 'done' && n.tasks?.length > 0);
 
-  // --- Record button ring animation ---
+  // User display name
+  const rawName = user?.email?.split('@')[0] ?? '';
+  const displayName = rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : 'Bienvenido';
+
+  // --- Mic button breathing animation ---
   const ringScale = useSharedValue(1);
-  const ringOpacity = useSharedValue(0.4);
+  const ringOpacity = useSharedValue(0.35);
+  const ring2Scale = useSharedValue(1);
+  const ring2Opacity = useSharedValue(0.2);
 
   useEffect(() => {
     ringScale.value = withRepeat(
       withSequence(
-        withTiming(1.15, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1.0, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.25, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
       true,
     );
     ringOpacity.value = withRepeat(
       withSequence(
-        withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.4, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.35, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
       true,
     );
-  }, [ringScale, ringOpacity]);
+    ring2Scale.value = withDelay(
+      600,
+      withRepeat(
+        withSequence(
+          withTiming(1.4, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.0, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        true,
+      ),
+    );
+    ring2Opacity.value = withDelay(
+      600,
+      withRepeat(
+        withSequence(
+          withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.2, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        true,
+      ),
+    );
+  }, [ringScale, ringOpacity, ring2Scale, ring2Opacity]);
 
-  const ringAnimStyle = useAnimatedStyle(() => ({
+  const ringStyle = useAnimatedStyle(() => ({
     transform: [{ scale: ringScale.value }],
     opacity: ringOpacity.value,
   }));
+  const ring2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring2Scale.value }],
+    opacity: ring2Opacity.value,
+  }));
 
-  // --- All existing handlers (unchanged) ---
+  // --- Handlers (same logic, cleaned up) ---
 
   const checkDailyLimit = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
@@ -146,10 +181,7 @@ export default function HomeScreen() {
     setProcessingElapsed(0);
     track('processing_started', { note_id: noteId, template: selectedTemplate, mode: selectedMode });
 
-    // Cancel any previous watcher
     watcherHandle?.cancel();
-
-    // Start the realtime + polling watcher
     const handle = watchNoteProcessing(noteId, {
       onStatusChange: (status, errorMessage) => {
         setProcessingStatus(status);
@@ -188,6 +220,7 @@ export default function HomeScreen() {
 
   const handleRecordingComplete = async (uri: string, duration: number) => {
     if (!user) return;
+    setShowRecorder(false);
     track('audio_record_completed', { duration, template: selectedTemplate, mode: selectedMode });
     const canProceed = await checkDailyLimit();
     if (!canProceed) return;
@@ -223,6 +256,10 @@ export default function HomeScreen() {
   const handleQuickAction = (mode: OutputMode, template?: NoteTemplate) => {
     if (template) setSelectedTemplate(template);
     setSelectedMode(mode);
+    if (user && !canCreateNote(user).allowed) {
+      setShowPaywall(true);
+      return;
+    }
     setShowRecorder(true);
   };
 
@@ -238,7 +275,7 @@ export default function HomeScreen() {
     showToast('Procesamiento cancelado', 'info');
   }, [watcherHandle]);
 
-  // Processing state
+  // ═══ Processing state ═══
   if (processingNoteId) {
     const elapsedMin = Math.floor(processingElapsed / 60);
     const elapsedSec = processingElapsed % 60;
@@ -250,15 +287,11 @@ export default function HomeScreen() {
           status={processingStatus}
           errorMessage={processingError}
           onRetry={() => {
-            if (processingNoteId && lastAudioUri) {
-              processNote(processingNoteId, lastAudioUri);
-            } else {
-              setProcessingNoteId(null);
-            }
+            if (processingNoteId && lastAudioUri) processNote(processingNoteId, lastAudioUri);
+            else setProcessingNoteId(null);
           }}
           onComplete={handleProcessingComplete}
         />
-        {/* Elapsed time + hints */}
         {processingStatus !== 'done' && processingStatus !== 'error' && (
           <View style={styles.processingFooter}>
             <Text style={styles.elapsedText}>Procesando... {elapsedStr}</Text>
@@ -276,50 +309,45 @@ export default function HomeScreen() {
     );
   }
 
-  // Recording state
+  // ═══ Recording state (full screen with countdown) ═══
   if (showRecorder) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.recorderHeader}>
-          <TouchableOpacity onPress={() => setShowRecorder(false)} style={styles.recorderBack}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.textPrimary} />
-            <Text style={styles.recorderBackText}>Inicio</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.templateRow}>
-          <TemplateSelector selected={selectedTemplate} onSelect={(t) => { setSelectedTemplate(t); setSelectedMode(getTemplateConfig(t).defaultMode); }} compact />
-        </View>
-        <View style={styles.recorderContent}>
-          <AudioRecorder onRecordingComplete={handleRecordingComplete} />
-          <TouchableOpacity style={styles.uploadButton} onPress={handleUploadFile} disabled={uploading} activeOpacity={0.7}>
-            {uploading ? <ActivityIndicator size="small" color={COLORS.primaryLight} /> : (
-              <>
-                <Ionicons name="cloud-upload-outline" size={18} color={COLORS.primaryLight} />
-                <Text style={styles.uploadText}>Subir archivo</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        <AudioRecorder
+          onRecordingComplete={handleRecordingComplete}
+          onCancel={() => setShowRecorder(false)}
+        />
       </SafeAreaView>
     );
   }
 
-  // Dashboard state
+  // ═══ Dashboard ═══
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.header}>
+        <Animated.View entering={FadeInDown.delay(50).springify().damping(14)} style={styles.header}>
           <View>
             <Text style={styles.greeting}>Hola</Text>
-            <Text style={styles.userName}>{user?.email?.split('@')[0] ?? 'ahí'}</Text>
-            <Text style={styles.motivational}>{motivational}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
+            <Animated.Text entering={FadeIn.delay(400)} style={styles.motivational}>{motivational}</Animated.Text>
           </View>
-          <AnimatedPressable onPress={() => router.push('/(tabs)/profile')}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{user?.email?.charAt(0).toUpperCase() ?? '?'}</Text>
-            </View>
-          </AnimatedPressable>
+          <View style={styles.headerRight}>
+            {/* Upload button */}
+            <AnimatedPressable onPress={handleUploadFile} style={styles.uploadBtn} scaleDown={0.9}>
+              {uploading ? (
+                <ActivityIndicator size="small" color={COLORS.primaryLight} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={20} color={COLORS.textSecondary} />
+              )}
+            </AnimatedPressable>
+            {/* Avatar */}
+            <AnimatedPressable onPress={() => router.push('/(tabs)/profile')}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{user?.email?.charAt(0).toUpperCase() ?? '?'}</Text>
+              </View>
+            </AnimatedPressable>
+          </View>
         </Animated.View>
 
         {/* Daily limit banner */}
@@ -327,50 +355,53 @@ export default function HomeScreen() {
           <DailyLimitBanner onUpgrade={() => setShowPaywall(true)} />
         )}
 
-        {/* Record button */}
+        {/* Record button section */}
         <View style={styles.recordSection}>
-          {/* Outer animated ring */}
-          <Animated.View style={[styles.recordOuterRing, ringAnimStyle]} />
-          {/* Main button */}
-          <AnimatedPressable
-            scaleDown={0.92}
-            onPress={() => {
-              if (user && !canCreateNote(user).allowed) {
-                setShowPaywall(true);
-                return;
-              }
-              setShowRecorder(true);
-            }}
-            style={styles.recordButtonPressable}
-          >
-            <View style={styles.bigRecordButton}>
-              <Ionicons name="mic" size={36} color="#FFFFFF" />
-            </View>
-          </AnimatedPressable>
-          <Animated.Text entering={FadeIn.delay(400)} style={styles.recordHint}>
+          <Animated.View entering={ZoomIn.delay(150).springify().damping(12)} style={styles.micWrapper}>
+            {/* Double breathing rings — centered in wrapper */}
+            <Animated.View style={[styles.recordRing, ringStyle]} />
+            <Animated.View style={[styles.recordRing2, ring2Style]} />
+            {/* Button */}
+            <AnimatedPressable
+              scaleDown={0.9}
+              onPress={() => {
+                hapticButtonPress();
+                if (user && !canCreateNote(user).allowed) {
+                  setShowPaywall(true);
+                  return;
+                }
+                setShowRecorder(true);
+              }}
+            >
+              <View style={styles.bigRecordButton}>
+                <Ionicons name="mic" size={36} color="#FFFFFF" />
+              </View>
+            </AnimatedPressable>
+          </Animated.View>
+          <Animated.Text entering={FadeIn.delay(500)} style={styles.recordHint}>
             Toca para grabar
           </Animated.Text>
-          <AnimatedPressable onPress={handleUploadFile} style={styles.dashboardUpload} scaleDown={0.95}>
-            <Ionicons name="cloud-upload-outline" size={16} color={COLORS.primaryLight} />
-            <Text style={styles.dashboardUploadText}>o sube un archivo de audio</Text>
-          </AnimatedPressable>
         </View>
 
         {/* Template selector */}
-        <View style={styles.sectionWide}>
+        <Animated.View entering={FadeInUp.delay(200).springify()} style={styles.sectionWide}>
           <Text style={[typography.label, styles.sectionLabel]}>Tipo de audio</Text>
-          <TemplateSelector selected={selectedTemplate} onSelect={(t) => { setSelectedTemplate(t); setSelectedMode(getTemplateConfig(t).defaultMode); }} compact />
-        </View>
+          <TemplateSelector
+            selected={selectedTemplate}
+            onSelect={(t) => { setSelectedTemplate(t); setSelectedMode(getTemplateConfig(t).defaultMode); }}
+            compact
+          />
+        </Animated.View>
 
         {/* Quick actions */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInUp.delay(300).springify()} style={styles.section}>
           <Text style={[typography.label, styles.sectionLabel]}>Acciones rápidas</Text>
           <QuickActions onAction={handleQuickAction} />
-        </View>
+        </Animated.View>
 
         {/* Recent notes */}
         {recentNotes.length > 0 && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeInUp.delay(400).springify()} style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Recientes</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/history')}>
@@ -380,33 +411,35 @@ export default function HomeScreen() {
             {recentNotes.map((note, i) => (
               <NoteCard key={note.id} note={note} index={i} />
             ))}
-          </View>
+          </Animated.View>
         )}
 
         {/* Pending tasks nudge */}
         {notesWithTasks.length > 0 && (
-          <AnimatedPressable
-            onPress={() => {
-              track('task_revisited', { count: notesWithTasks.length });
-              router.push(`/note/${notesWithTasks[0].id}`);
-            }}
-            style={styles.pendingCard}
-          >
-            <View style={styles.pendingIcon}>
-              <Ionicons name="checkbox-outline" size={18} color={COLORS.primaryLight} />
-            </View>
-            <View style={styles.pendingText}>
-              <Text style={styles.pendingTitle}>
-                {totalTasks} {totalTasks === 1 ? 'tarea' : 'tareas'} en {notesWithTasks.length} {notesWithTasks.length === 1 ? 'nota' : 'notas'}
-              </Text>
-              <Text style={styles.pendingHint}>Toca para revisar</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-          </AnimatedPressable>
+          <Animated.View entering={FadeInUp.delay(500).springify()}>
+            <AnimatedPressable
+              onPress={() => {
+                track('task_revisited', { count: notesWithTasks.length });
+                router.push(`/note/${notesWithTasks[0].id}`);
+              }}
+              style={styles.pendingCard}
+            >
+              <View style={styles.pendingIcon}>
+                <Ionicons name="checkbox-outline" size={18} color={COLORS.primaryLight} />
+              </View>
+              <View style={styles.pendingText}>
+                <Text style={styles.pendingTitle}>
+                  {totalTasks} {totalTasks === 1 ? 'tarea' : 'tareas'} en {notesWithTasks.length} {notesWithTasks.length === 1 ? 'nota' : 'notas'}
+                </Text>
+                <Text style={styles.pendingHint}>Toca para revisar</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+            </AnimatedPressable>
+          </Animated.View>
         )}
 
         {/* Stats bar */}
-        <View style={styles.statsBar}>
+        <Animated.View entering={FadeInUp.delay(600).springify()} style={styles.statsBar}>
           <View style={styles.statCell}>
             <Text style={styles.statValue}>{notes.length}</Text>
             <Text style={styles.statLabel}>notas</Text>
@@ -421,17 +454,31 @@ export default function HomeScreen() {
             <Text style={styles.statValue}>{totalTasks}</Text>
             <Text style={styles.statLabel}>tareas</Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Daily limit */}
         {user?.plan === 'free' && (
-          <Text style={styles.limitText}>{dailyRemaining}/{LIMITS.FREE_DAILY_NOTES} notas gratis hoy</Text>
+          <Animated.Text entering={FadeIn.delay(700)} style={styles.limitText}>
+            {dailyRemaining}/{LIMITS.FREE_DAILY_NOTES} notas gratis hoy
+          </Animated.Text>
         )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
 
+      {/* AI Chat FAB */}
+      {notes.length > 0 && (
+        <AnimatedPressable
+          onPress={() => setShowAIChat(true)}
+          style={styles.chatFab}
+          scaleDown={0.9}
+        >
+          <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+        </AnimatedPressable>
+      )}
+
       <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="daily_limit" />
+      <AIChatModal visible={showAIChat} onClose={() => setShowAIChat(false)} />
     </SafeAreaView>
   );
 }
@@ -439,7 +486,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#FFFFFF',
   },
 
   // Header
@@ -467,6 +514,19 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '400',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  uploadBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatar: {
     width: 44,
     height: 44,
@@ -485,18 +545,29 @@ const styles = StyleSheet.create({
   recordSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 44,
   },
-  recordOuterRing: {
+  micWrapper: {
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordRing: {
     position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 2,
     borderColor: COLORS.primaryLight,
   },
-  recordButtonPressable: {
-    zIndex: 1,
+  recordRing2: {
+    position: 'absolute',
+    width: 124,
+    height: 124,
+    borderRadius: 62,
+    borderWidth: 1.5,
+    borderColor: COLORS.primaryLight,
   },
   bigRecordButton: {
     width: 76,
@@ -505,34 +576,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.primary,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
   recordHint: {
-    marginTop: 14,
-    fontSize: 13,
-    color: COLORS.textMuted,
-  },
-  dashboardUpload: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  dashboardUploadText: {
     fontSize: 13,
     color: COLORS.textMuted,
-    fontWeight: '400',
+    fontWeight: '500',
   },
 
   // Sections
   sectionWide: {
-    marginTop: 32,
+    marginTop: 24,
     marginBottom: 20,
   },
   section: {
@@ -638,51 +697,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-  // Recorder state
-  recorderHeader: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  recorderBack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    padding: 4,
-  },
-  recorderBackText: {
-    fontSize: 16,
-    color: COLORS.textPrimary,
-    fontWeight: '500',
-  },
-  templateRow: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  recorderContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: COLORS.primaryLight,
-    borderStyle: 'dashed',
-    marginTop: 24,
-  },
-  uploadText: {
-    fontSize: 14,
-    color: COLORS.primaryLight,
-    fontWeight: '500',
-  },
-
   // Processing footer
   processingFooter: {
     position: 'absolute',
@@ -716,5 +730,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.error,
     fontWeight: '500',
+  },
+
+  // AI Chat FAB
+  chatFab: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primaryLight,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
 });

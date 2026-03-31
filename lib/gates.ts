@@ -12,7 +12,7 @@ import type { User, OutputMode } from '@/types';
 // Types
 // ---------------------------------------------------------------------------
 
-export type GateReason = 'daily_limit' | 'requires_premium' | 'audio_too_long';
+export type GateReason = 'daily_limit' | 'requires_premium' | 'audio_too_long' | 'daily_minutes_exceeded';
 
 export interface GateResult {
   allowed: boolean;
@@ -74,6 +74,13 @@ export function getMaxAudioDuration(user: User): number {
   return user.plan === 'premium'
     ? LIMITS.PREMIUM_MAX_AUDIO_DURATION
     : LIMITS.FREE_MAX_AUDIO_DURATION;
+}
+
+/**
+ * Max daily audio minutes for the user's plan.
+ */
+export function getMaxDailyMinutes(user: User): number {
+  return user.plan === 'premium' ? 120 : Infinity;
 }
 
 /**

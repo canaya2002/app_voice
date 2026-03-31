@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,17 +11,17 @@ import { Audio } from 'expo-av';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withRepeat,
   withSequence,
   withTiming,
+  withDelay,
   Easing,
   FadeIn,
   FadeInUp,
+  FadeInDown,
+  ZoomIn,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, LIMITS } from '@/lib/constants';
-import { SPRING } from '@/lib/animations';
 import {
   requestAudioPermissions,
   startRecording,
@@ -31,73 +31,159 @@ import {
   formatDuration,
 } from '@/lib/audio';
 import { useRecordingStore } from '@/stores/recordingStore';
-import { hapticRecordStart, hapticRecordPause, hapticRecordResume, hapticRecordStop, hapticError } from '@/lib/haptics';
-import AnimatedPressable from '@/components/AnimatedPressable';
+import {
+  hapticRecordStart,
+  hapticRecordPause,
+  hapticRecordResume,
+  hapticRecordStop,
+  hapticError,
+  hapticButtonPress,
+} from '@/lib/haptics';
+import AnimatedPressable from './AnimatedPressable';
 
-const NUM_BARS = 40;
+const NUM_BARS = 45;
 
 interface AudioRecorderProps {
   onRecordingComplete: (uri: string, duration: number) => void;
+  onCancel: () => void;
 }
 
-function getBarOpacity(level: number, isPaused: boolean): number {
-  if (isPaused) return 0.2;
-  return 0.25 + level * 0.75;
+/* ── Pulse Ring ─────────────────────────────────────────── */
+function PulseRing({ delayMs, size }: { delayMs: number; size: number }) {
+  const scale = useSharedValue(0.8);
+  const opacity = useSharedValue(0.5);
+
+  useEffect(() => {
+    scale.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(0.8, { duration: 0 }),
+          withTiming(2.2, { duration: 1600, easing: Easing.out(Easing.cubic) }),
+        ),
+        -1,
+      ),
+    );
+    opacity.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(0.45, { duration: 0 }),
+          withTiming(0, { duration: 1600, easing: Easing.out(Easing.cubic) }),
+        ),
+        -1,
+      ),
+    );
+  }, [scale, opacity, delayMs]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2,
+          borderColor: COLORS.primaryLight,
+        },
+        style,
+      ]}
+    />
+  );
 }
 
-export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProps) {
+/* ── Countdown Number ──────────────────────────────────── */
+function CountdownNumber({ num }: { num: number }) {
+  return (
+    <Animated.Text
+      key={`cd-${num}`}
+      entering={ZoomIn.springify().damping(8).stiffness(120)}
+      style={styles.countdownText}
+    >
+      {num}
+    </Animated.Text>
+  );
+}
+
+/* ── Recording Dot Blink ───────────────────────────────── */
+function RecordingDot() {
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.15, { duration: 600 }),
+        withTiming(1, { duration: 600 }),
+      ),
+      -1,
+    );
+  }, [opacity]);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return <Animated.View style={[styles.liveDot, style]} />;
+}
+
+/* ── Main Component ────────────────────────────────────── */
+export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRecorderProps) {
   const { width: screenWidth } = useWindowDimensions();
   const {
     isRecording, isPaused, duration, metering,
     setRecording, setPaused, setDuration, addMetering, reset,
   } = useRecordingStore();
 
+  const [phase, setPhase] = useState<'countdown' | 'recording'>('countdown');
+  const [countdownNum, setCountdownNum] = useState(3);
+
   const recordingRef = useRef<Audio.Recording | null>(null);
   const durationRef = useRef(duration);
   durationRef.current = duration;
 
-  // Reanimated values for recording ring pulse
-  const ringScale = useSharedValue(1);
-  const ringOpacity = useSharedValue(0.3);
-  const dotOpacity = useSharedValue(1);
-
+  /* ── Countdown timer ──────────────────────────────────── */
   useEffect(() => {
-    if (isRecording && !isPaused) {
-      ringScale.value = withRepeat(
-        withSequence(
-          withTiming(1.15, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1.0, { duration: 1500, easing: Easing.inOut(Easing.sin) })
-        ), -1, true
-      );
-      ringOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0, { duration: 1500 }),
-          withTiming(0.3, { duration: 1500 })
-        ), -1, true
-      );
-      dotOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0.2, { duration: 600 }),
-          withTiming(1, { duration: 600 })
-        ), -1, true
-      );
-    } else {
-      ringScale.value = withTiming(1, { duration: 300 });
-      ringOpacity.value = withTiming(0, { duration: 300 });
-      dotOpacity.value = withTiming(1, { duration: 200 });
+    if (phase !== 'countdown') return;
+    const timer = setTimeout(() => {
+      if (countdownNum > 1) {
+        hapticButtonPress();
+        setCountdownNum((n) => n - 1);
+      } else {
+        hapticButtonPress();
+        transitionToRecording();
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdownNum, phase]);
+
+  /* ── Transition to recording ──────────────────────────── */
+  const transitionToRecording = async () => {
+    const hasPermission = await requestAudioPermissions();
+    if (!hasPermission) {
+      onCancel();
+      return;
     }
-  }, [isRecording, isPaused, ringScale, ringOpacity, dotOpacity]);
+    try {
+      hapticRecordStart();
+      const recording = await startRecording(
+        (level) => addMetering(level),
+        (seconds) => setDuration(seconds),
+      );
+      recordingRef.current = recording;
+      setRecording(true);
+      setPhase('recording');
+    } catch {
+      Alert.alert('Error', 'No se pudo iniciar la grabación.');
+      onCancel();
+    }
+  };
 
-  const ringStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: ringScale.value }],
-    opacity: ringOpacity.value,
-  }));
-
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: dotOpacity.value,
-  }));
-
-  // Handlers
+  /* ── Stop handler ─────────────────────────────────────── */
   const handleStop = useCallback(async () => {
     hapticRecordStop();
     const uri = await stopRecording();
@@ -107,7 +193,18 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
     if (uri) onRecordingComplete(uri, finalDuration);
   }, [onRecordingComplete, reset]);
 
-  const WARNING_THRESHOLD = LIMITS.MAX_AUDIO_DURATION * 0.8; // 8 min
+  /* ── Cancel handler (back during recording) ───────────── */
+  const handleCancel = useCallback(async () => {
+    if (isRecording) {
+      await stopRecording();
+      recordingRef.current = null;
+      reset();
+    }
+    onCancel();
+  }, [isRecording, reset, onCancel]);
+
+  /* ── Duration limit ───────────────────────────────────── */
+  const WARNING_THRESHOLD = LIMITS.MAX_AUDIO_DURATION * 0.8;
   const warnedRef = useRef(false);
   const isNearLimit = isRecording && duration >= WARNING_THRESHOLD;
 
@@ -121,27 +218,20 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
     }
   }, [duration, isRecording, handleStop, WARNING_THRESHOLD]);
 
-  const handleStart = async () => {
-    const hasPermission = await requestAudioPermissions();
-    if (!hasPermission) return;
-    try {
-      hapticRecordStart();
-      const recording = await startRecording(
-        (level) => addMetering(level),
-        (seconds) => setDuration(seconds)
-      );
-      recordingRef.current = recording;
-      setRecording(true);
-    } catch {
-      Alert.alert('Error', 'No se pudo iniciar la grabación.');
+  /* ── Pause/Resume ─────────────────────────────────────── */
+  const handlePause = async () => {
+    if (isPaused) {
+      hapticRecordResume();
+      await resumeRecording();
+      setPaused(false);
+    } else {
+      hapticRecordPause();
+      await pauseRecording();
+      setPaused(true);
     }
   };
 
-  const handlePause = async () => {
-    if (isPaused) { hapticRecordResume(); await resumeRecording(); setPaused(false); }
-    else { hapticRecordPause(); await pauseRecording(); setPaused(true); }
-  };
-
+  /* ── Waveform bars ────────────────────────────────────── */
   const bars = useMemo(() => {
     const slice = metering.slice(-NUM_BARS);
     const padded: number[] = [];
@@ -152,32 +242,90 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
     return padded;
   }, [metering]);
 
-  // ── Idle state ──
-  if (!isRecording) {
+  /* ═══════════════════════════════════════════════════════
+     COUNTDOWN PHASE
+     ═══════════════════════════════════════════════════════ */
+  if (phase === 'countdown') {
     return (
-      <View style={styles.idleContainer}>
-        {/* Pulsing ring */}
-        <Animated.View style={[styles.idleRing, ringStyle]} />
-        {/* Shadow layer */}
-        <View style={styles.idleShadow} />
-        {/* Button */}
-        <AnimatedPressable onPress={handleStart} scaleDown={0.92} style={styles.idleButton} accessibilityLabel="Grabar nota de voz">
-          <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.idleGradient}>
-            <Ionicons name="mic" size={36} color="#FFFFFF" />
-          </LinearGradient>
-        </AnimatedPressable>
-        <Text style={styles.idleHint}>Toca para grabar</Text>
+      <View style={styles.container}>
+        {/* Close button */}
+        <Animated.View entering={FadeIn.delay(200)} style={styles.topBar}>
+          <AnimatedPressable onPress={onCancel} style={styles.closeBtn}>
+            <Ionicons name="close" size={26} color={COLORS.textSecondary} />
+          </AnimatedPressable>
+        </Animated.View>
+
+        {/* Centered mic + countdown */}
+        <View style={styles.countdownCenter}>
+          {/* Mic with rings wrapper */}
+          <View style={styles.micRingWrapper}>
+            <PulseRing delayMs={0} size={100} />
+            <PulseRing delayMs={500} size={100} />
+            <PulseRing delayMs={1000} size={100} />
+            <Animated.View entering={ZoomIn.springify().damping(10)} style={styles.countdownMic}>
+              <Ionicons name="mic" size={48} color="#FFFFFF" />
+            </Animated.View>
+          </View>
+
+          {/* Number — below mic with safe space */}
+          <View style={styles.countdownNumWrap}>
+            <CountdownNumber num={countdownNum} />
+          </View>
+        </View>
+
+        {/* Preparing text */}
+        <Animated.Text entering={FadeInUp.delay(400)} style={styles.preparingText}>
+          Preparando grabación...
+        </Animated.Text>
       </View>
     );
   }
 
-  // ── Recording (immersive) ──
+  /* ═══════════════════════════════════════════════════════
+     RECORDING PHASE
+     ═══════════════════════════════════════════════════════ */
   return (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.immersive}>
+    <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        <AnimatedPressable onPress={handleCancel} style={styles.closeBtn}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.textSecondary} />
+        </AnimatedPressable>
+      </View>
+
+      {/* Mic + Status */}
+      <Animated.View entering={FadeInDown.springify().damping(14)} style={styles.recordingHeader}>
+        <View style={styles.recordingMic}>
+          <Ionicons name="mic" size={28} color="#FFFFFF" />
+        </View>
+        <View style={styles.statusRow}>
+          {isPaused ? (
+            <Text style={styles.statusPaused}>Pausado</Text>
+          ) : (
+            <View style={styles.liveRow}>
+              <RecordingDot />
+              <Text style={styles.liveText}>Grabando</Text>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+
+      {/* Timer */}
+      <Animated.Text
+        entering={FadeIn.delay(200)}
+        style={[styles.timer, isNearLimit && styles.timerWarning]}
+      >
+        {formatDuration(duration)}
+      </Animated.Text>
+
       {/* Waveform */}
-      <Animated.View entering={FadeInUp.delay(200).springify()} style={[styles.waveformWrap, { width: screenWidth - 48 }]}>
+      <Animated.View
+        entering={FadeInUp.delay(300).springify()}
+        style={[styles.waveformWrap, { width: screenWidth - 48 }]}
+      >
         {bars.map((level, i) => {
-          const h = Math.max(6, level * 80);
+          const h = Math.max(4, level * 70);
+          const alpha = 0.25 + level * 0.75;
           return (
             <View key={i} style={styles.barCol}>
               <View
@@ -185,19 +333,19 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
                   styles.bar,
                   {
                     height: h,
-                    opacity: getBarOpacity(level, isPaused),
-                    backgroundColor: isPaused ? 'rgba(255,255,255,0.2)' : `rgba(162,155,254,${0.3 + level * 0.6})`,
+                    backgroundColor: isPaused
+                      ? `rgba(200,200,210,${alpha * 0.5})`
+                      : `rgba(143,211,255,${alpha})`,
                   },
                 ]}
               />
-              {/* Mirror */}
+              {/* Mirror reflection */}
               <View
                 style={[
                   styles.bar,
                   {
-                    height: h * 0.3,
-                    opacity: 0.1,
-                    backgroundColor: 'rgba(162,155,254,0.4)',
+                    height: h * 0.25,
+                    backgroundColor: `rgba(143,211,255,${alpha * 0.12})`,
                     marginTop: 2,
                   },
                 ]}
@@ -207,103 +355,253 @@ export default function AudioRecorder({ onRecordingComplete }: AudioRecorderProp
         })}
       </Animated.View>
 
-      {/* Timer */}
-      <Text style={[styles.timer, isNearLimit && styles.timerWarning]}>{formatDuration(duration)}</Text>
+      {/* Voice detection hint */}
+      <Animated.View entering={FadeIn.delay(800)} style={styles.voiceHint}>
+        <Ionicons name="people-outline" size={16} color={COLORS.primaryLight} />
+        <Text style={styles.voiceHintText}>Detectando voces...</Text>
+      </Animated.View>
 
-      {/* Status */}
-      {isPaused ? (
-        <Text style={styles.statusPaused}>Pausado</Text>
-      ) : (
-        <View style={styles.liveRow}>
-          <Animated.View style={[styles.liveDot, dotStyle]} />
-          <Text style={styles.liveText}>Grabando</Text>
-        </View>
-      )}
+      {/* Spacer */}
+      <View style={{ flex: 1 }} />
 
       {/* Controls */}
-      <View style={styles.controlsRow}>
+      <Animated.View entering={FadeInUp.delay(400).springify()} style={styles.controlsRow}>
         <AnimatedPressable onPress={handlePause} style={styles.pauseBtn} accessibilityLabel={isPaused ? 'Reanudar' : 'Pausar'}>
-          <Ionicons name={isPaused ? 'play' : 'pause'} size={24} color="#FFFFFF" />
+          <Ionicons name={isPaused ? 'play' : 'pause'} size={26} color={COLORS.textPrimary} />
         </AnimatedPressable>
 
         <AnimatedPressable onPress={handleStop} scaleDown={0.93} style={styles.stopOuter} accessibilityLabel="Detener grabación">
-          <LinearGradient colors={[COLORS.recording, '#DC2626']} style={styles.stopGradient}>
+          <View style={styles.stopButton}>
             <View style={styles.stopIcon} />
-          </LinearGradient>
+          </View>
         </AnimatedPressable>
-      </View>
+      </Animated.View>
 
-      <Text style={[styles.limitHint, isNearLimit && styles.limitWarning]}>
+      {/* Limit hint */}
+      <Animated.Text
+        entering={FadeIn.delay(600)}
+        style={[styles.limitHint, isNearLimit && styles.limitWarning]}
+      >
         {isNearLimit
           ? `${formatDuration(LIMITS.MAX_AUDIO_DURATION - duration)} restante`
           : `Máx. ${Math.floor(LIMITS.MAX_AUDIO_DURATION / 60)} min`}
-      </Text>
+      </Animated.Text>
     </Animated.View>
   );
 }
 
+/* ── Styles ─────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  // ── Idle ──
-  idleContainer: { alignItems: 'center', paddingVertical: 32 },
-  idleRing: {
-    position: 'absolute', top: 32 - 14, width: 110, height: 110, borderRadius: 55,
-    borderWidth: 2, borderColor: COLORS.primaryLight,
-  },
-  idleShadow: {
-    position: 'absolute', top: 32 - 4, width: 90, height: 90, borderRadius: 45,
-    backgroundColor: COLORS.primary, opacity: 0.12,
-  },
-  idleButton: { width: 82, height: 82, borderRadius: 41, overflow: 'hidden' },
-  idleGradient: {
-    width: 82, height: 82, borderRadius: 41,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
-  },
-  idleHint: { marginTop: 14, fontSize: 14, color: COLORS.textMuted },
-
-  // ── Immersive ──
-  immersive: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(13,13,26,0.96)',
-    borderRadius: 28, minHeight: 420, paddingVertical: 40, paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
 
-  // ── Waveform ──
-  waveformWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 100, gap: 2, marginBottom: 32 },
-  barCol: { alignItems: 'center', flex: 1, maxWidth: 6 },
-  bar: { width: 3.5, borderRadius: 2 },
+  /* ── Top bar ── */
+  topBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.surfaceAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
-  // ── Timer ──
+  /* ── Countdown ── */
+  countdownCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 40,
+  },
+  micRingWrapper: {
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownMic: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  countdownNumWrap: {
+    height: 90,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  countdownText: {
+    fontSize: 72,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -2,
+  },
+  preparingText: {
+    fontSize: 15,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingBottom: 60,
+  },
+
+  /* ── Recording header ── */
+  recordingHeader: {
+    alignItems: 'center',
+    paddingTop: 12,
+    gap: 12,
+  },
+  recordingMic: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  statusRow: {
+    alignItems: 'center',
+  },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.recording,
+  },
+  liveText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  statusPaused: {
+    fontSize: 15,
+    color: COLORS.warning,
+    fontWeight: '600',
+  },
+
+  /* ── Timer ── */
   timer: {
-    fontSize: 56, fontWeight: '200', color: '#FFFFFF',
-    letterSpacing: 4, fontVariant: ['tabular-nums'], marginBottom: 8,
+    fontSize: 48,
+    fontWeight: '200',
+    color: COLORS.textPrimary,
+    letterSpacing: 3,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  timerWarning: {
+    color: COLORS.warning,
   },
 
-  // ── Status ──
-  statusPaused: { fontSize: 15, color: COLORS.warning, fontWeight: '600', marginBottom: 36 },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 36 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.recording },
-  liveText: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },
+  /* ── Waveform ── */
+  waveformWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 90,
+    gap: 2,
+    alignSelf: 'center',
+  },
+  barCol: {
+    alignItems: 'center',
+    flex: 1,
+    maxWidth: 5,
+  },
+  bar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
 
-  // ── Controls ──
-  controlsRow: { flexDirection: 'row', alignItems: 'center', gap: 36, marginBottom: 24 },
+  /* ── Voice hint ── */
+  voiceHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+  },
+  voiceHintText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
+
+  /* ── Controls ── */
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 40,
+    paddingBottom: 16,
+  },
   pauseBtn: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
-    justifyContent: 'center', alignItems: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  stopOuter: { width: 76, height: 76, borderRadius: 38, overflow: 'hidden' },
-  stopGradient: {
-    width: 76, height: 76, borderRadius: 38,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: COLORS.recording, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+  stopOuter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
-  stopIcon: { width: 24, height: 24, borderRadius: 6, backgroundColor: '#FFFFFF' },
+  stopButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.recording,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.recording,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  stopIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+  },
 
-  limitHint: { fontSize: 12, color: 'rgba(255,255,255,0.25)' },
-  timerWarning: { color: COLORS.warning },
-  limitWarning: { color: COLORS.warning, fontWeight: '600' },
+  /* ── Limit ── */
+  limitHint: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingBottom: 24,
+    marginTop: 8,
+  },
+  limitWarning: {
+    color: COLORS.warning,
+    fontWeight: '600',
+  },
 });

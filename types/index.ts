@@ -8,6 +8,10 @@ export interface User {
   daily_count: number;
   daily_audio_minutes: number;
   last_reset_date: string;
+  custom_vocabulary?: string[];
+  display_name?: string;
+  avatar_url?: string;
+  welcome_completed?: boolean;
 }
 
 // ── Output Modes ──────────────────────────────────────────────────────────────
@@ -53,6 +57,16 @@ export interface SpeakerInfo {
   color: string;
 }
 
+// ── Folders ──────────────────────────────────────────────────────────────────
+
+export interface Folder {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
+
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
 export interface Note {
@@ -78,6 +92,10 @@ export interface Note {
   primary_mode: OutputMode;
   template?: NoteTemplate;
   retry_count: number;
+  // v3 fields
+  deleted_at?: string | null;
+  folder_id?: string | null;
+  share_token?: string | null;
 }
 
 // ── Mode Results ──────────────────────────────────────────────────────────────

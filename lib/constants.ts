@@ -1,28 +1,44 @@
-import { useColorScheme } from 'react-native';
-import { useThemeStore } from '@/stores/themeStore';
 import type { OutputMode, NoteTemplate } from '@/types';
 
 export const COLORS = {
+  // Core brand — negro elegante + azul cielo
   primary: '#0B0B0B',
   primaryLight: '#8FD3FF',
   primaryDark: '#000000',
+  primaryPale: '#E8F4FD',
+  primaryGlow: 'rgba(143, 211, 255, 0.25)',
 
+  // Backgrounds
   background: '#FFFFFF',
+  backgroundSecondary: '#FAFBFC',
   surface: '#FFFFFF',
   surfaceAlt: '#F5F7FA',
 
+  // Glassmorphism
+  glassBg: 'rgba(255, 255, 255, 0.72)',
+  glassBorder: 'rgba(255, 255, 255, 0.5)',
+  glassShadow: 'rgba(0, 0, 0, 0.08)',
+
+  // Accent
+  accentGold: '#F59E0B',
+  accentTeal: '#0EA5E9',
+
+  // Text
   textPrimary: '#0B0B0B',
   textSecondary: '#8A8F98',
   textMuted: '#B8BCC4',
 
+  // Semantic
   success: '#34C759',
   warning: '#FF9500',
   error: '#FF3B30',
   info: '#8FD3FF',
 
+  // Borders
   border: '#EBEDF0',
   borderLight: '#F5F7FA',
 
+  // Recording
   recording: '#FF3B30',
   recordingBg: '#FFF0EF',
 };
@@ -31,10 +47,20 @@ export const DARK_COLORS: typeof COLORS = {
   primary: '#FFFFFF',
   primaryLight: '#8FD3FF',
   primaryDark: '#FAFAFA',
+  primaryPale: '#1A2A3A',
+  primaryGlow: 'rgba(143, 211, 255, 0.25)',
 
   background: '#0B0B0B',
+  backgroundSecondary: '#111111',
   surface: '#1A1A1A',
   surfaceAlt: '#222222',
+
+  glassBg: 'rgba(26, 26, 26, 0.72)',
+  glassBorder: 'rgba(255, 255, 255, 0.08)',
+  glassShadow: 'rgba(0, 0, 0, 0.3)',
+
+  accentGold: '#FBBF24',
+  accentTeal: '#38BDF8',
 
   textPrimary: '#F5F5F5',
   textSecondary: '#9A9FA8',
@@ -55,17 +81,11 @@ export const DARK_COLORS: typeof COLORS = {
 export type ThemeColors = typeof COLORS;
 
 export function useThemeColors(): ThemeColors {
-  const { preference } = useThemeStore();
-  const systemScheme = useColorScheme();
-  const resolved = preference === 'system' ? (systemScheme ?? 'light') : preference;
-  return resolved === 'dark' ? DARK_COLORS : COLORS;
+  return COLORS;
 }
 
 export function useIsDark(): boolean {
-  const { preference } = useThemeStore();
-  const systemScheme = useColorScheme();
-  const resolved = preference === 'system' ? (systemScheme ?? 'light') : preference;
-  return resolved === 'dark';
+  return false;
 }
 
 export const LIMITS = {
@@ -89,12 +109,12 @@ export function isModeFreeTier(mode: OutputMode): boolean {
 }
 
 export const SPEAKER_COLORS = [
-  { bg: '#F5F7FA', text: '#0B0B0B', name: 'default' },
-  { bg: '#EAF7FF', text: '#2B7CB5', name: 'blue' },
+  { bg: '#E8F4FD', text: '#1A7FB8', name: 'blue' },
   { bg: '#F0FFF4', text: '#1A7F4B', name: 'green' },
   { bg: '#FFF8F0', text: '#B8600A', name: 'amber' },
   { bg: '#F5F7FA', text: '#5A5F68', name: 'gray' },
-  { bg: '#EAF7FF', text: '#4A90B8', name: 'sky' },
+  { bg: '#FCE7F3', text: '#9D174D', name: 'pink' },
+  { bg: '#E0E7FF', text: '#3730A3', name: 'indigo' },
 ];
 
 export interface ModeConfig {

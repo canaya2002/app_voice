@@ -8,6 +8,18 @@ export const FONT = {
   bold: 'Inter_700Bold',
 } as const;
 
+/** Standardized design tokens — use these instead of hardcoded values */
+export const DESIGN = {
+  HEADER_SIZE: 26,
+  SUBHEADER_SIZE: 18,
+  BODY_SIZE: 15,
+  CAPTION_SIZE: 13,
+  CARD_PADDING: 16,
+  SCREEN_PADDING: 20,
+  CARD_RADIUS: 14,
+  SECTION_GAP: 24,
+} as const;
+
 export const typography = StyleSheet.create({
   h1: { fontSize: 28, fontFamily: FONT.bold, color: COLORS.textPrimary, letterSpacing: -0.5 },
   h2: { fontSize: 22, fontFamily: FONT.bold, color: COLORS.textPrimary, letterSpacing: -0.3 },
@@ -25,36 +37,43 @@ export const shadows = {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 3,
+    shadowRadius: 4,
     elevation: 1,
   },
   md: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   lg: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
   },
-  purple: {
-    shadowColor: '#0B0B0B',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
+  brand: {
+    shadowColor: '#8FD3FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
     elevation: 6,
+  },
+  glow: {
+    shadowColor: '#8FD3FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
   },
 } as const;
 
 export const cardStyles = StyleSheet.create({
   base: {
     backgroundColor: COLORS.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
@@ -65,9 +84,25 @@ export const cardStyles = StyleSheet.create({
     padding: 20,
     ...shadows.md,
   },
+  glass: {
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: 20,
+    padding: 16,
+    ...shadows.lg,
+  },
+  card3D: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    ...shadows.md,
+  },
   subtle: {
     backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
   },
 });

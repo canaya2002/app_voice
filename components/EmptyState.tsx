@@ -1,12 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withDelay,
+  Easing,
+  FadeInDown,
+  FadeInUp,
+} from 'react-native-reanimated';
 import { COLORS } from '@/lib/constants';
 import { hapticButtonPress } from '@/lib/haptics';
 
@@ -25,53 +35,61 @@ export default function EmptyState({
   actionLabel,
   onAction,
 }: EmptyStateProps) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const pulseScale = useSharedValue(1);
+  const floatY = useSharedValue(0);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, scaleAnim]);
+    pulseScale.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      true,
+    );
+    floatY.value = withDelay(
+      1000,
+      withRepeat(
+        withSequence(
+          withTiming(-6, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        true,
+      ),
+    );
+  }, [pulseScale, floatY]);
+
+  const iconAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }, { translateY: floatY.value }],
+  }));
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }],
-        },
-      ]}
-    >
-      <View style={styles.iconCircle}>
+    <View style={styles.container}>
+      <Animated.View style={[styles.iconCircle, iconAnimStyle]}>
         <Ionicons name={icon} size={48} color={COLORS.primaryLight} />
-      </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      </Animated.View>
+      <Animated.Text entering={FadeInDown.delay(200).springify().damping(14)} style={styles.title}>
+        {title}
+      </Animated.Text>
+      <Animated.Text entering={FadeInDown.delay(300).springify().damping(14)} style={styles.message}>
+        {message}
+      </Animated.Text>
       {actionLabel && onAction ? (
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => {
-            hapticButtonPress();
-            onAction();
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionText}>{actionLabel}</Text>
-        </TouchableOpacity>
+        <Animated.View entering={FadeInUp.delay(400).springify().damping(14)}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              hapticButtonPress();
+              onAction();
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionText}>{actionLabel}</Text>
+          </TouchableOpacity>
+        </Animated.View>
       ) : null}
-    </Animated.View>
+    </View>
   );
 }
 

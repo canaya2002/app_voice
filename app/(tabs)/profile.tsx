@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useState, useEffect as useEffectHook } from 'react';
 import {
   View,
   Text,
   TextInput,
+  Image,
   StyleSheet,
   Alert,
   ScrollView,
@@ -13,12 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedProps, withTiming, Easing } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { COLORS, LIMITS, useThemeColors } from '@/lib/constants';
-import { useThemeStore } from '@/stores/themeStore';
 import { track } from '@/lib/analytics';
 import Paywall from '@/components/Paywall';
 import { shadows } from '@/lib/styles';
@@ -55,19 +56,117 @@ const STAT_CARD_STYLES: StatCardConfig[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Animated counter
+// ---------------------------------------------------------------------------
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
+function AnimatedCounter({ value, style }: { value: string; style: object }) {
+  const numericVal = parseInt(value, 10);
+  const isNumeric = !isNaN(numericVal) && String(numericVal) === value;
+  const animatedVal = useSharedValue(0);
+
+  const animatedProps = useAnimatedProps(() => ({
+    text: isNumeric ? String(Math.round(animatedVal.value)) : value,
+    defaultValue: isNumeric ? '0' : value,
+  }));
+
+  useEffectHook(() => {
+    if (isNumeric) {
+      animatedVal.value = withTiming(numericVal, { duration: 800, easing: Easing.out(Easing.exp) });
+    }
+  }, [numericVal, isNumeric, animatedVal]);
+
+  if (!isNumeric) return <Text style={style}>{value}</Text>;
+
+  return (
+    <AnimatedTextInput
+      underlineColorAndroid="transparent"
+      editable={false}
+      animatedProps={animatedProps}
+      style={[style, { padding: 0 }]}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
 export default function ProfileScreen() {
   const colors = useThemeColors();
-  const { preference, setPreference } = useThemeStore();
   const [showPaywall, setShowPaywall] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const { user, logout } = useAuthStore();
+  const [vocabInput, setVocabInput] = useState('');
+  const [savingVocab, setSavingVocab] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaQr, setMfaQr] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const { user, logout, fetchProfile } = useAuthStore();
   const { notes } = useNotesStore();
+
+  // Check MFA status on mount
+  useState(() => {
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      const totp = data?.totp ?? [];
+      const verified = totp.find(f => f.status === 'verified');
+      if (verified) { setMfaEnabled(true); setMfaFactorId(verified.id); }
+    });
+  });
+
+  const handleEnableMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Sythio App' });
+      if (error) throw error;
+      setMfaQr(data.totp.qr_code);
+      setMfaFactorId(data.id);
+    } catch {
+      showToast('Error al configurar 2FA', 'error');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleVerifyMfa = async () => {
+    if (!mfaFactorId || mfaCode.length !== 6) return;
+    setMfaLoading(true);
+    try {
+      const { data: challenge } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+      if (!challenge) throw new Error('No challenge');
+      const { error } = await supabase.auth.mfa.verify({ factorId: mfaFactorId, challengeId: challenge.id, code: mfaCode });
+      if (error) throw error;
+      setMfaEnabled(true);
+      setMfaQr(null);
+      setMfaCode('');
+      showToast('2FA activado correctamente', 'success');
+    } catch {
+      showToast('Código incorrecto', 'error');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!mfaFactorId) return;
+    Alert.alert('Desactivar 2FA', '¿Estás seguro? Tu cuenta será menos segura.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Desactivar', style: 'destructive', onPress: async () => {
+          setMfaLoading(true);
+          const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+          if (error) { showToast('Error al desactivar', 'error'); }
+          else { setMfaEnabled(false); setMfaFactorId(null); showToast('2FA desactivado', 'info'); }
+          setMfaLoading(false);
+        },
+      },
+    ]);
+  };
 
   const handleLogout = () => {
     hapticButtonPress();
@@ -169,7 +268,13 @@ export default function ProfileScreen() {
     }
   };
 
-  const initial = user?.email?.charAt(0).toUpperCase() ?? '?';
+  const getInitials = (email: string): string => {
+    const name = email.split('@')[0].replace(/[._-]/g, ' ');
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (parts[0]?.[0] ?? '?').toUpperCase();
+  };
+  const initials = getInitials(user?.email ?? '');
 
   const notesThisMonth = notes.filter((n) => {
     const noteDate = new Date(n.created_at);
@@ -200,7 +305,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <Animated.View entering={FadeInUp.delay(50).duration(500)} style={styles.header}>
           <Text style={styles.headerTitle}>Perfil</Text>
@@ -208,9 +313,14 @@ export default function ProfileScreen() {
 
         {/* Avatar + identity */}
         <View style={styles.profileSection}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{initial}</Text>
-          </View>
+          <LinearGradient
+            colors={['#0B0B0B', '#2A2A2A']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatarCircle}
+          >
+            <Text style={styles.avatarText}>{initials}</Text>
+          </LinearGradient>
 
           <Animated.Text entering={FadeInUp.delay(150).duration(400)} style={styles.name}>
             {user?.email ?? ''}
@@ -239,7 +349,7 @@ export default function ProfileScreen() {
               <View style={styles.statIconWrap}>
                 <Ionicons name={card.icon} size={22} color={card.iconColor} />
               </View>
-              <Text style={styles.statNumber}>{statValues[index]}</Text>
+              <AnimatedCounter value={statValues[index]} style={styles.statNumber} />
               <Text style={styles.statLabel}>{card.labelKey}</Text>
             </Animated.View>
           ))}
@@ -299,26 +409,156 @@ export default function ProfileScreen() {
           </Animated.View>
         )}
 
-        {/* Theme toggle */}
-        <Animated.View entering={cardEntry(7)} style={[styles.themeCard, { borderColor: colors.border }]}>
-          <Text style={[styles.themeTitle, { color: colors.textPrimary }]}>Apariencia</Text>
-          <View style={styles.themeOptions}>
-            {(['light', 'dark', 'system'] as const).map((opt) => {
-              const active = preference === opt;
-              const labels = { light: 'Claro', dark: 'Oscuro', system: 'Sistema' };
-              const icons = { light: 'sunny-outline', dark: 'moon-outline', system: 'phone-portrait-outline' } as const;
-              return (
-                <AnimatedPressable
-                  key={opt}
-                  onPress={() => setPreference(opt)}
-                  style={[styles.themeOption, active && { backgroundColor: colors.primary }]}
+        {/* 2FA section */}
+        <Animated.View entering={cardEntry(7)} style={[styles.accountCard, { borderColor: colors.border }]}>
+          <Text style={[styles.accountTitle, { color: colors.textPrimary }]}>Seguridad</Text>
+          {mfaQr ? (
+            <View style={{ alignItems: 'center', gap: 12 }}>
+              <Text style={{ fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 18 }}>
+                Escanea este código QR con tu app de autenticación (Google Authenticator, Authy, etc.)
+              </Text>
+              <Image source={{ uri: mfaQr }} style={{ width: 200, height: 200, borderRadius: 12 }} />
+              <TextInput
+                style={{
+                  width: '100%', height: 48, borderWidth: 1.5, borderColor: COLORS.border,
+                  borderRadius: 12, paddingHorizontal: 14, fontSize: 20, fontWeight: '600',
+                  textAlign: 'center', letterSpacing: 8, color: COLORS.textPrimary,
+                }}
+                placeholder="000000"
+                placeholderTextColor={COLORS.textMuted}
+                value={mfaCode}
+                onChangeText={setMfaCode}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                <TouchableOpacity
+                  onPress={() => { setMfaQr(null); setMfaCode(''); }}
+                  style={{ flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center' }}
                 >
-                  <Ionicons name={icons[opt]} size={16} color={active ? (colors.background) : colors.textSecondary} />
-                  <Text style={[styles.themeOptionText, active && { color: colors.background }]}>{labels[opt]}</Text>
-                </AnimatedPressable>
-              );
-            })}
+                  <Text style={{ fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleVerifyMfa}
+                  disabled={mfaCode.length !== 6 || mfaLoading}
+                  style={{ flex: 1, height: 44, borderRadius: 10, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', opacity: mfaCode.length !== 6 ? 0.4 : 1 }}
+                >
+                  {mfaLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ fontSize: 14, color: '#FFF', fontWeight: '600' }}>Verificar</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '500', color: COLORS.textPrimary }}>
+                  Autenticación de dos factores
+                </Text>
+                <Text style={{ fontSize: 13, color: mfaEnabled ? COLORS.success : COLORS.textMuted, marginTop: 2 }}>
+                  {mfaEnabled ? 'Activada' : 'No activada'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={mfaEnabled ? handleDisableMfa : handleEnableMfa}
+                disabled={mfaLoading}
+                style={{
+                  paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
+                  backgroundColor: mfaEnabled ? COLORS.surfaceAlt : COLORS.primary,
+                }}
+              >
+                {mfaLoading ? (
+                  <ActivityIndicator size="small" color={mfaEnabled ? COLORS.textSecondary : '#FFF'} />
+                ) : (
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: mfaEnabled ? COLORS.textSecondary : '#FFF' }}>
+                    {mfaEnabled ? 'Desactivar' : 'Activar'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Vocabulary section */}
+        <Animated.View entering={cardEntry(7)} style={[styles.accountCard, { borderColor: colors.border }]}>
+          <Text style={[styles.accountTitle, { color: colors.textPrimary }]}>Vocabulario personalizado</Text>
+          <Text style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 12, lineHeight: 18 }}>
+            Agrega nombres, términos técnicos o palabras que Sythio debe reconocer mejor al transcribir.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <TextInput
+              style={{
+                flex: 1, height: 42, borderWidth: 1, borderColor: COLORS.border,
+                borderRadius: 10, paddingHorizontal: 12, fontSize: 15, color: COLORS.textPrimary,
+              }}
+              placeholder="Ej: Sythio, SCRUM, Dr. García"
+              placeholderTextColor={COLORS.textMuted}
+              value={vocabInput}
+              onChangeText={setVocabInput}
+              returnKeyType="done"
+              onSubmitEditing={async () => {
+                const term = vocabInput.trim();
+                if (!term || !user) return;
+                const current = user.custom_vocabulary ?? [];
+                if (current.includes(term)) { setVocabInput(''); return; }
+                const updated = [...current, term];
+                setSavingVocab(true);
+                await supabase.from('profiles').update({ custom_vocabulary: updated }).eq('id', user.id);
+                await fetchProfile();
+                setSavingVocab(false);
+                setVocabInput('');
+                showToast('Término agregado', 'success');
+              }}
+            />
+            <TouchableOpacity
+              onPress={async () => {
+                const term = vocabInput.trim();
+                if (!term || !user) return;
+                const current = user.custom_vocabulary ?? [];
+                if (current.includes(term)) { setVocabInput(''); return; }
+                const updated = [...current, term];
+                setSavingVocab(true);
+                await supabase.from('profiles').update({ custom_vocabulary: updated }).eq('id', user.id);
+                await fetchProfile();
+                setSavingVocab(false);
+                setVocabInput('');
+                showToast('Término agregado', 'success');
+              }}
+              disabled={savingVocab || !vocabInput.trim()}
+              style={{
+                width: 42, height: 42, borderRadius: 10, backgroundColor: COLORS.primary,
+                justifyContent: 'center', alignItems: 'center',
+                opacity: savingVocab || !vocabInput.trim() ? 0.4 : 1,
+              }}
+            >
+              {savingVocab ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="add" size={22} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
           </View>
+          {(user?.custom_vocabulary ?? []).length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {(user?.custom_vocabulary ?? []).map((term, i) => (
+                <TouchableOpacity
+                  key={`${term}-${i}`}
+                  onPress={async () => {
+                    if (!user) return;
+                    const updated = (user.custom_vocabulary ?? []).filter((_, idx) => idx !== i);
+                    await supabase.from('profiles').update({ custom_vocabulary: updated }).eq('id', user.id);
+                    await fetchProfile();
+                  }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    backgroundColor: COLORS.surfaceAlt, paddingHorizontal: 10, paddingVertical: 6,
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, color: COLORS.textPrimary }}>{term}</Text>
+                  <Ionicons name="close-circle" size={14} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </Animated.View>
 
         {/* Account section */}
@@ -487,14 +727,18 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   avatarText: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: '#FFFFFF',
   },
   name: {
     fontSize: 17,
@@ -532,6 +776,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   statIconWrap: {
     width: 40,
