@@ -1,4 +1,6 @@
+import { useColorScheme } from 'react-native';
 import type { OutputMode, NoteTemplate } from '@/types';
+import { useThemeStore } from '@/stores/themeStore';
 
 export const COLORS = {
   // Core brand — negro elegante + azul cielo
@@ -85,7 +87,12 @@ export function useThemeColors(): ThemeColors {
 }
 
 export function useIsDark(): boolean {
-  return false;
+  const preference = useThemeStore((s) => s.preference);
+  const systemScheme = useColorScheme();
+
+  if (preference === 'dark') return true;
+  if (preference === 'light') return false;
+  return systemScheme === 'dark';
 }
 
 export const LIMITS = {

@@ -15,6 +15,7 @@ import { hapticModeChange, hapticCopyClipboard } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import { supabase } from '@/lib/supabase';
 import type { OutputMode, MessageTone } from '@/types';
+import ReportCharts, { parseCharts } from '@/components/ReportChart';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -453,6 +454,7 @@ function SummaryView({ result }: { result: Record<string, unknown> }) {
         </>
       )}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="summary" result={result} />
     </View>
   );
@@ -663,6 +665,7 @@ function TasksView({ result, noteId }: { result: Record<string, unknown>; noteId
         );
       })}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="tasks" result={result} />
     </View>
   );
@@ -733,6 +736,7 @@ function ActionPlanView({ result }: { result: Record<string, unknown> }) {
         </>
       ) : null}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="action_plan" result={result} />
     </View>
   );
@@ -862,6 +866,7 @@ function ExecutiveReportView({ result }: { result: Record<string, unknown> }) {
         </>
       )}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="executive_report" result={result} />
     </View>
   );
@@ -981,6 +986,7 @@ function StudyView({ result }: { result: Record<string, unknown> }) {
         </>
       )}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="study" result={result} />
     </View>
   );
@@ -1059,6 +1065,7 @@ function IdeasView({ result }: { result: Record<string, unknown> }) {
         </>
       ) : null}
 
+      <ReportCharts charts={parseCharts(result)} />
       <CopyResultFooter mode="ideas" result={result} />
     </View>
   );

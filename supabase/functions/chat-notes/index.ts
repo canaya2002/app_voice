@@ -13,7 +13,12 @@ const MAX_NOTES_CONTEXT = 5;
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
-  const ok = !origin || origin.includes("sythio") || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost") || origin.startsWith("exp://");
+  const ok = !origin
+    || origin === "https://sythio.com"
+    || origin === "https://www.sythio.com"
+    || origin.endsWith(".sythio.vercel.app")
+    || origin.startsWith("http://localhost")
+    || origin.startsWith("exp://");
   return {
     "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

@@ -136,8 +136,6 @@ export default function RootLayout() {
   }, [loading, onboardingDone, welcomeDone, fontsLoaded]);
 
   // 3. Navigation guard
-  const [navReady, setNavReady] = useState(false);
-
   useEffect(() => {
     if (loading || onboardingDone === null || welcomeDone === null) return;
 
@@ -163,14 +161,10 @@ export default function RootLayout() {
       if (!done) {
         if (segments[1] !== 'onboarding') {
           router.replace('/(auth)/onboarding');
-        } else {
-          setNavReady(true);
         }
       } else if (!session) {
         if (!inAuthGroup || segments[1] === 'onboarding') {
           router.replace('/(auth)/login');
-        } else {
-          setNavReady(true);
         }
       } else {
         // Re-verify welcome flag from storage (could have been set by welcome screen)
@@ -186,8 +180,6 @@ export default function RootLayout() {
           router.replace('/(auth)/welcome');
         } else if (wcDone && !inTabsGroup) {
           router.replace('/(tabs)');
-        } else {
-          setNavReady(true);
         }
       }
     };
@@ -195,7 +187,18 @@ export default function RootLayout() {
     navigate();
   }, [session, loading, onboardingDone, welcomeDone, segments, router]);
 
-  if (loading || onboardingDone === null || welcomeDone === null || !fontsLoaded || !navReady) {
+  // Show splash until route matches expected navigation state (synchronous — no race)
+  const routeReady = (() => {
+    if (loading || onboardingDone === null || welcomeDone === null || !fontsLoaded) return false;
+    const inAuthGroup = segments[0] === '(auth)';
+    const inTabsGroup = segments[0] === '(tabs)';
+    if (!onboardingDone) return segments[1] === 'onboarding';
+    if (!session) return inAuthGroup && segments[1] !== 'onboarding';
+    if (!welcomeDone) return segments[1] === 'welcome';
+    return inTabsGroup;
+  })();
+
+  if (!routeReady) {
     return <SplashLoader />;
   }
 

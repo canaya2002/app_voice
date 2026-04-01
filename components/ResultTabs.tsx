@@ -50,7 +50,7 @@ const STAGGER_DELAY = 150;
 // ---------------------------------------------------------------------------
 
 function storageKey(noteId: string): string {
-  return `tasks_${noteId}`;
+  return `tasks_v2_${noteId}`;
 }
 
 // ---------------------------------------------------------------------------

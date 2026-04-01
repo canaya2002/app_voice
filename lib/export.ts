@@ -5,6 +5,7 @@ import { showToast } from '@/components/Toast';
 import { getModeConfig } from '@/lib/constants';
 import type { Note, OutputMode } from '@/types';
 import { formatDurationLong } from '@/lib/audio';
+import { parseCharts, buildChartsHtml } from '@/components/ReportChart';
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -69,6 +70,12 @@ const PDF_STYLES = `
   .footer { margin-top: 40px; text-align: center; color: #B8BCC4; font-size: 12px; }
 `;
 
+function appendCharts(html: string, result: Record<string, unknown>): string {
+  const charts = parseCharts(result);
+  if (charts.length > 0) html += buildChartsHtml(charts);
+  return html;
+}
+
 function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): string {
   switch (mode) {
     case 'summary': {
@@ -80,7 +87,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
       if (keyPoints.length) html += `<h2>Puntos clave</h2><ul>${keyPoints.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
       if (topics.length) html += `<h2>Temas</h2><div>${topics.map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>`;
       if (highlights.length) html += `<h2>Destacados por participante</h2><ul>${highlights.map((h) => `<li>${escapeHtml(h)}</li>`).join('')}</ul>`;
-      return html;
+      return appendCharts(html, result);
     }
     case 'tasks': {
       const tasks = rArr(result.tasks);
@@ -94,7 +101,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
         html += `</li>`;
       });
       html += `</ul>`;
-      return html;
+      return appendCharts(html, result);
     }
     case 'action_plan': {
       const objective = s(result.objective);
@@ -115,7 +122,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
       if (obstacles.length) html += `<h2>Obstáculos</h2><ul>${obstacles.map((o) => `<li>${escapeHtml(o)}</li>`).join('')}</ul>`;
       if (nextStep) html += `<div class="card"><strong>Siguiente paso inmediato:</strong> ${escapeHtml(nextStep)}</div>`;
       if (criteria) html += `<h2>Criterios de éxito</h2><p>${escapeHtml(criteria)}</p>`;
-      return html;
+      return appendCharts(html, result);
     }
     case 'clean_text': {
       return `<div class="card">${escapeHtml(s(result.clean_text)).replace(/\n/g, '<br/>')}</div>`;
@@ -142,7 +149,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
       if (pending.length) html += `<h2>Pendientes</h2><ul>${pending.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
       if (nextSteps.length) html += `<h2>Próximos pasos</h2><ul>${nextSteps.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`;
       if (participants.length) html += `<h2>Participantes</h2><div>${participants.map((p) => `<span class="chip">${escapeHtml(p)}</span>`).join('')}</div>`;
-      return html;
+      return appendCharts(html, result);
     }
     case 'ready_message': {
       const messages = typeof result.messages === 'object' && result.messages ? result.messages as Record<string, unknown> : {};
@@ -177,7 +184,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
           html += `</p>`;
         });
       }
-      return html;
+      return appendCharts(html, result);
     }
     case 'ideas': {
       const core = s(result.core_idea);
@@ -201,7 +208,7 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
       if (questions.length) html += `<h2>Preguntas abiertas</h2><ul>${questions.map((q) => `<li>${escapeHtml(q)}</li>`).join('')}</ul>`;
       if (nextStep) html += `<div class="card"><strong>Siguiente paso:</strong> ${escapeHtml(nextStep)}</div>`;
       if (structured) html += `<h2>Versión estructurada</h2><p>${escapeHtml(structured).replace(/\n/g, '<br/>')}</p>`;
-      return html;
+      return appendCharts(html, result);
     }
     default:
       return `<pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>`;

@@ -21,9 +21,11 @@ const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
 // ── Max tokens per mode ────────────────────────────────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
-  summary: 900, tasks: 1100, action_plan: 1100, clean_text: 1300,
-  executive_report: 1300, ready_message: 700, study: 1100, ideas: 900,
+  summary: 1100, tasks: 1400, action_plan: 1400, clean_text: 1300,
+  executive_report: 1600, ready_message: 700, study: 1400, ideas: 1100,
 };
+
+const CHART_HINT = `\nIf the result contains countable categories (e.g. priority distribution, effort levels, types), include "charts":[{"type":"bar","title":"Chart title","data":[{"label":"Category","value":count,"color":"#hex"}]}] (max 2 charts). Colors: #EF4444=high/urgent, #F59E0B=medium/warning, #22C55E=low/success, #3B82F6=info. Omit "charts" if nothing quantifiable.`;
 
 const ipHits = new Map<string, { count: number; resetAt: number }>();
 
@@ -71,21 +73,26 @@ function buildModePrompt(mode: string, transcript: string, speakerInstr: string,
   const langInstr = "IMPORTANT: Respond in the SAME LANGUAGE as the transcript.";
 
   const prompts: Record<string, string> = {
-    summary: `Extract an executive summary. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[]}`,
-    tasks: `Extract ALL tasks. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0}`,
-    action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria"}`,
+    summary: `Extract an executive summary. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[]}${CHART_HINT}`,
+    tasks: `Extract ALL tasks. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0}${CHART_HINT}`,
+    action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria"}${CHART_HINT}`,
     clean_text: `Rewrite as clean, professional text. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","clean_text":"rewritten text without filler words","format":"narrative","word_count":0}`,
-    executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}`,
+    executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}${CHART_HINT}`,
     ready_message: `Generate ready-to-send messages. Preferred tone: ${tone || "professional"}. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
-    study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}`,
-    ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}`,
+    study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}${CHART_HINT}`,
+    ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}${CHART_HINT}`,
   };
   return prompts[mode] || prompts["summary"];
 }
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
-  const ok = !origin || origin.includes("sythio") || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost") || origin.startsWith("exp://");
+  const ok = !origin
+    || origin === "https://sythio.com"
+    || origin === "https://www.sythio.com"
+    || origin.endsWith(".sythio.vercel.app")
+    || origin.startsWith("http://localhost")
+    || origin.startsWith("exp://");
   return {
     "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

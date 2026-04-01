@@ -142,14 +142,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  setPlan: (plan: 'free' | 'premium') => {
+  setPlan: async (plan: 'free' | 'premium') => {
     const { user, session } = get();
     if (user) {
       set({ user: { ...user, plan } });
     }
-    // Also persist to DB
+    // Persist to DB
     if (session) {
-      supabase.from('profiles').update({ plan }).eq('id', session.user.id).then(() => {});
+      await supabase.from('profiles').update({ plan }).eq('id', session.user.id);
     }
   },
 }));

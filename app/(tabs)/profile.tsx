@@ -112,13 +112,13 @@ export default function ProfileScreen() {
   const { notes } = useNotesStore();
 
   // Check MFA status on mount
-  useState(() => {
+  useEffectHook(() => {
     supabase.auth.mfa.listFactors().then(({ data }) => {
       const totp = data?.totp ?? [];
       const verified = totp.find(f => f.status === 'verified');
       if (verified) { setMfaEnabled(true); setMfaFactorId(verified.id); }
     });
-  });
+  }, []);
 
   const handleEnableMfa = async () => {
     setMfaLoading(true);

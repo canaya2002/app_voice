@@ -2,9 +2,22 @@ import * as XLSX from 'xlsx';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { showToast } from '@/components/Toast';
+import { parseCharts, type ChartConfig } from '@/components/ReportChart';
 import type { Note, OutputMode } from '@/types';
 
 type SheetData = { name: string; data: (string | number | null)[][] };
+
+function buildChartSheets(result: Record<string, unknown>): SheetData[] {
+  const charts = parseCharts(result);
+  if (charts.length === 0) return [];
+  return charts.map((chart, i) => ({
+    name: (chart.title || `Gráfica ${i + 1}`).slice(0, 31),
+    data: [
+      ['Categoría', 'Valor'],
+      ...chart.data.map((d) => [d.label, d.value]),
+    ],
+  }));
+}
 
 function buildTasksSheets(result: Record<string, unknown>): SheetData[] {
   const tasks = Array.isArray(result.tasks) ? result.tasks as Record<string, unknown>[] : [];
@@ -201,9 +214,36 @@ export async function exportToExcel(
       return;
   }
 
+  // Add chart data sheets if AI generated chart data
+  const chartSheets = buildChartSheets(result);
+  sheets = [...sheets, ...chartSheets];
+
+  // Add metadata sheet
+  sheets.unshift({
+    name: 'Info',
+    data: [
+      ['Título', note.title],
+      ['Fecha', new Date(note.created_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })],
+      ['Duración', `${Math.floor(note.audio_duration / 60)}m ${note.audio_duration % 60}s`],
+      ['Modo', mode],
+      [],
+      ['Generado con Sythio'],
+    ],
+  });
+
   const workbook = XLSX.utils.book_new();
   sheets.forEach(({ name, data }) => {
     const worksheet = XLSX.utils.aoa_to_sheet(data);
+    // Auto-fit column widths (approximate)
+    const colWidths = data[0]?.map((_, colIdx) => {
+      const maxLen = data.reduce((max, row) => {
+        const cell = row[colIdx];
+        const len = cell != null ? String(cell).length : 0;
+        return Math.max(max, len);
+      }, 0);
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 60) };
+    }) ?? [];
+    worksheet['!cols'] = colWidths;
     XLSX.utils.book_append_sheet(workbook, worksheet, name.slice(0, 31));
   });
 

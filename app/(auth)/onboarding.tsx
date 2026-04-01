@@ -28,7 +28,6 @@ import { COLORS } from '@/lib/constants';
 import { FONT } from '@/lib/styles';
 import { hapticButtonPress, hapticProcessingDone } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
-import AnimatedGradientBg from '@/components/AnimatedGradientBg';
 
 export const ONBOARDING_KEY = 'sythio_onboarding_done';
 
@@ -76,7 +75,6 @@ const PAGES: OnboardingPage[] = [
 
 /* ─── Illustrations ─────────────────────────────────────── */
 
-// Page 1: Sythio logo with breathing glow
 function WelcomeIllustration() {
   const breathe = useSharedValue(0);
   const ring1 = useSharedValue(0.8);
@@ -142,7 +140,6 @@ function WelcomeIllustration() {
   );
 }
 
-// Page 2: Microphone with sound waves
 function RecordIllustration() {
   const wave1 = useSharedValue(0);
   const wave2 = useSharedValue(0);
@@ -201,7 +198,6 @@ function RecordIllustration() {
   );
 }
 
-// Page 3: Sparkle with orbiting elements
 function MagicIllustration() {
   const mainRotate = useSharedValue(0);
   const sparkleScale = useSharedValue(1);
@@ -257,7 +253,6 @@ function MagicIllustration() {
 
   return (
     <View style={illStyles.container}>
-      {/* Orbiting ring */}
       <Animated.View style={[illStyles.orbitRing, rotateStyle]}>
         <Animated.View style={[illStyles.orbitDot, { top: 0, left: '50%', marginLeft: -6 }, o1Style]} />
         <Animated.View style={[illStyles.orbitDot, illStyles.orbitDot2, { bottom: 10, left: 10 }, o2Style]} />
@@ -270,7 +265,6 @@ function MagicIllustration() {
   );
 }
 
-// Page 4: Grid of template icons
 const TEMPLATE_ITEMS = [
   { icon: 'people-outline' as const, label: 'Reuniones', color: '#0EA5E9' },
   { icon: 'flash-outline' as const, label: 'Ideas', color: '#F59E0B' },
@@ -289,7 +283,7 @@ function TemplatesIllustration() {
           entering={FadeInUp.delay(i * 100 + 200).duration(500).springify().damping(14)}
           style={illStyles.templateCard}
         >
-          <View style={[illStyles.templateIcon, { backgroundColor: item.color + '25' }]}>
+          <View style={[illStyles.templateIcon, { backgroundColor: item.color + '15' }]}>
             <Ionicons name={item.icon} size={24} color={item.color} />
           </View>
           <Text style={illStyles.templateLabel}>{item.label}</Text>
@@ -299,7 +293,6 @@ function TemplatesIllustration() {
   );
 }
 
-// Page 5: Checkmark with celebration
 function ReadyIllustration() {
   const checkScale = useSharedValue(0);
   const glowOp = useSharedValue(0);
@@ -365,13 +358,12 @@ const illStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Welcome
   glow: {
     position: 'absolute',
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: 'rgba(143, 211, 255, 0.3)',
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
   },
   ring: {
     position: 'absolute',
@@ -379,59 +371,57 @@ const illStyles = StyleSheet.create({
     height: 160,
     borderRadius: 80,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(124, 58, 237, 0.15)',
   },
   logoCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(124, 58, 237, 0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(124, 58, 237, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#fff',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 6,
   },
   logoS: {
     fontSize: 48,
     fontFamily: FONT.bold,
-    color: '#FFFFFF',
+    color: '#7C3AED',
     letterSpacing: -1,
   },
-  // Record
   waveRing: {
     position: 'absolute',
     width: 110,
     height: 110,
     borderRadius: 55,
     borderWidth: 2,
-    borderColor: 'rgba(255, 59, 48, 0.6)',
+    borderColor: 'rgba(239, 68, 68, 0.5)',
   },
   micOuter: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: 'rgba(255, 59, 48, 0.85)',
+    backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF3B30',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
     elevation: 8,
   },
-  // Magic
   orbitRing: {
     position: 'absolute',
     width: 180,
     height: 180,
     borderRadius: 90,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.2)',
+    borderColor: 'rgba(245, 158, 11, 0.25)',
     borderStyle: 'dashed',
   },
   orbitDot: {
@@ -451,11 +441,10 @@ const illStyles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Templates
   templateGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -465,13 +454,18 @@ const illStyles = StyleSheet.create({
   },
   templateCard: {
     width: 104,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#F8FAFC',
     borderRadius: 16,
     padding: 14,
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(0, 0, 0, 0.04)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   templateIcon: {
     width: 44,
@@ -483,15 +477,14 @@ const illStyles = StyleSheet.create({
   templateLabel: {
     fontSize: 12,
     fontFamily: FONT.medium,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#475569',
   },
-  // Ready
   readyGlow: {
     position: 'absolute',
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: 'rgba(52, 199, 89, 0.25)',
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
   },
   readyRing: {
     position: 'absolute',
@@ -499,19 +492,19 @@ const illStyles = StyleSheet.create({
     height: 150,
     borderRadius: 75,
     borderWidth: 1.5,
-    borderColor: 'rgba(52, 199, 89, 0.2)',
+    borderColor: 'rgba(34, 197, 94, 0.2)',
   },
   readyCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(52, 199, 89, 0.85)',
+    backgroundColor: '#22C55E',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
     elevation: 8,
   },
 });
@@ -530,7 +523,7 @@ function DotIndicator({ total, current }: { total: number; current: number }) {
               styles.dot,
               {
                 width: isActive ? 28 : 8,
-                backgroundColor: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.25)',
+                backgroundColor: isActive ? '#0F172A' : '#E2E8F0',
               },
             ]}
             layout={withSpring({ damping: 18, stiffness: 200 }) as any}
@@ -544,7 +537,7 @@ function DotIndicator({ total, current }: { total: number; current: number }) {
 /* ─── Main Screen ───────────────────────────────────────── */
 
 export default function OnboardingScreen() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
@@ -576,7 +569,7 @@ export default function OnboardingScreen() {
   const isLastPage = currentPage === PAGES.length - 1;
 
   const renderPage = useCallback(
-    ({ item, index }: { item: OnboardingPage; index: number }) => {
+    ({ item }: { item: OnboardingPage }) => {
       const Illustration = ILLUSTRATION_MAP[item.illustration];
       return (
         <View style={[styles.page, { width }]}>
@@ -595,9 +588,7 @@ export default function OnboardingScreen() {
 
   return (
     <View style={styles.root}>
-      <AnimatedGradientBg />
       <SafeAreaView style={styles.safe}>
-        {/* Skip */}
         <View style={styles.header}>
           {!isLastPage ? (
             <AnimatedPressable onPress={handleComplete} style={styles.skipBtn}>
@@ -608,7 +599,6 @@ export default function OnboardingScreen() {
           )}
         </View>
 
-        {/* Pages */}
         <FlatList
           ref={flatListRef}
           data={PAGES}
@@ -624,7 +614,6 @@ export default function OnboardingScreen() {
           getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
         />
 
-        {/* Bottom */}
         <View style={styles.bottom}>
           <DotIndicator total={PAGES.length} current={currentPage} />
 
@@ -649,7 +638,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#050510',
+    backgroundColor: '#FFFFFF',
   },
   safe: {
     flex: 1,
@@ -665,12 +654,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   skipText: {
     fontSize: 15,
     fontFamily: FONT.medium,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#94A3B8',
   },
   page: {
     flex: 1,
@@ -691,7 +679,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 34,
     fontFamily: FONT.bold,
-    color: '#FFFFFF',
+    color: '#0F172A',
     textAlign: 'center',
     letterSpacing: -0.8,
     lineHeight: 42,
@@ -700,7 +688,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 17,
     fontFamily: FONT.regular,
-    color: 'rgba(255,255,255,0.65)',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 26,
     maxWidth: 320,
@@ -725,23 +713,29 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: '#0F172A',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   ctaBtn: {
     width: '100%',
     height: 58,
     borderRadius: 29,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: '#7C3AED',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
   ctaText: {
     fontSize: 17,
