@@ -16,8 +16,8 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_LIMITS = { free: 2, premium: 50 };
-const PREMIUM_MAX_DAILY_AUDIO_MINUTES = 120;
+const DAILY_LIMITS: Record<string, number> = { free: 2, premium: 50, enterprise: 9999 };
+const DAILY_AUDIO_MINUTES: Record<string, number> = { free: 20, premium: 120, enterprise: 9999 };
 const IP_RATE_LIMIT = 20;
 const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
@@ -196,9 +196,27 @@ serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // ── Fetch profile + rate limits ──
-  const { data: profile } = await admin.from("profiles").select("plan, daily_count, daily_audio_minutes, last_reset_date, custom_vocabulary").eq("id", user.id).single();
+  const { data: profile } = await admin.from("profiles").select("plan, daily_count, daily_audio_minutes, last_reset_date, custom_vocabulary, org_id").eq("id", user.id).single();
   if (!profile) {
     return new Response(JSON.stringify({ error: "Perfil no encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // ── Enterprise: verify org status and member status ──
+  if (profile.org_id) {
+    const { data: org } = await admin.from("organizations").select("active, custom_notes_per_day, custom_audio_minutes_per_day").eq("id", profile.org_id).single();
+    if (org && !org.active) {
+      return new Response(
+        JSON.stringify({ error: "org_inactive", message: "Tu organización no tiene una suscripción activa. Contacta a tu administrador." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { data: membership } = await admin.from("organization_members").select("status").eq("org_id", profile.org_id).eq("user_id", user.id).single();
+    if (membership && membership.status === "suspended") {
+      return new Response(
+        JSON.stringify({ error: "user_suspended", message: "Tu cuenta en esta organización está suspendida. Contacta a tu administrador." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
   }
 
   const today = new Date().toISOString().split("T")[0];
@@ -221,12 +239,13 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── Premium: daily audio minutes limit ──
-  if (plan === "premium") {
+  // ── Daily audio minutes limit ──
+  const maxDailyAudioMin = DAILY_AUDIO_MINUTES[plan] ?? DAILY_AUDIO_MINUTES.free;
+  if (maxDailyAudioMin < 9999) {
     const audioDurationMin = ((noteCheck as Record<string, unknown>).audio_duration as number || 0) / 60;
-    if ((dailyAudioMinutes + audioDurationMin) > PREMIUM_MAX_DAILY_AUDIO_MINUTES) {
+    if ((dailyAudioMinutes + audioDurationMin) > maxDailyAudioMin) {
       return new Response(
-        JSON.stringify({ error: "daily_minutes_exceeded", message: "Has alcanzado el límite de 120 minutos diarios de audio." }),
+        JSON.stringify({ error: "daily_minutes_exceeded", message: `Has alcanzado el límite de ${maxDailyAudioMin} minutos diarios de audio.` }),
         { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -457,8 +476,8 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
     // ── 8. Save mode result ──
     await admin.from("mode_results").insert({ note_id, mode: primary_mode, result: modeResult });
 
-    // ── 9. Update daily audio minutes for premium users ──
-    if (plan === "premium") {
+    // ── 9. Update daily audio minutes for paid users ──
+    if (plan === "premium" || plan === "enterprise") {
       const audioDurationMin = Math.ceil(((noteCheck as Record<string, unknown>).audio_duration as number || 0) / 60);
       await admin.from("profiles").update({ daily_audio_minutes: dailyAudioMinutes + audioDurationMin }).eq("id", user.id);
     }

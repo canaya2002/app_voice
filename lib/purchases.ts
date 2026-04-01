@@ -13,7 +13,7 @@
  *      - Reference Name: "Sythio Premium Monthly"
  *      - Product ID: com.sythio.app.premium.monthly
  *      - Duration: 1 Month
- *      - Price: $4.99
+ *      - Price: $14.99
  *      - Localization (es-MX): "Sythio Premium" / "Acceso completo a todos los modos"
  *   4. Add introductory offer: Free Trial, 7 days
  *   5. In App Store Connect > App > Subscriptions, add the product to your app

@@ -293,8 +293,8 @@ export default function ProfileScreen() {
   const totalConversations = notes.filter((n) => n.is_conversation && n.speakers_detected > 1).length;
 
   const dailyUsed = user?.daily_count ?? 0;
-  const dailyMax = LIMITS.FREE_DAILY_NOTES;
-  const dailyProgress = Math.min(dailyUsed / dailyMax, 1);
+  const dailyMax = user?.plan === 'free' ? LIMITS.FREE_DAILY_NOTES : LIMITS.PREMIUM_DAILY_NOTES;
+  const dailyProgress = dailyMax === Infinity ? 0 : Math.min(dailyUsed / dailyMax, 1);
   const dailyBarColor =
     dailyProgress < 0.5 ? COLORS.success : dailyProgress < 0.9 ? COLORS.warning : COLORS.error;
 
@@ -343,12 +343,12 @@ export default function ProfileScreen() {
 
           <Animated.View entering={FadeInUp.delay(200).duration(400)} style={styles.planBadge}>
             <Ionicons
-              name={user?.plan === 'premium' ? 'diamond' : 'leaf'}
+              name={user?.plan === 'enterprise' ? 'business' : user?.plan === 'premium' ? 'diamond' : 'leaf'}
               size={14}
               color="#8FD3FF"
             />
             <Text style={styles.planText}>
-              {user?.plan === 'premium' ? 'Premium' : 'Plan gratuito'}
+              {user?.plan === 'enterprise' ? 'Enterprise' : user?.plan === 'premium' ? 'Premium' : 'Plan gratuito'}
             </Text>
           </Animated.View>
         </View>

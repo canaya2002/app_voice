@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
-import type { User } from '@/types';
+import type { User, UserPlan } from '@/types';
 import type { Session } from '@supabase/supabase-js';
+import { checkDomainAutoJoin } from '@/lib/enterprise';
 
 interface AuthState {
   session: Session | null;
@@ -19,7 +20,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   fetchProfile: () => Promise<void>;
-  setPlan: (plan: 'free' | 'premium') => void;
+  setPlan: (plan: UserPlan) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -67,12 +68,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
 
+    let orgId = data.org_id ?? null;
+    let plan: UserPlan = data.plan ?? 'free';
+
+    // Auto-join by email domain if user has no org yet
+    if (!orgId && data.email) {
+      try {
+        const autoJoinOrgId = await checkDomainAutoJoin(data.email, data.id);
+        if (autoJoinOrgId) {
+          orgId = autoJoinOrgId;
+          plan = 'enterprise';
+        }
+      } catch {
+        // Non-critical — skip auto-join on error
+      }
+    }
+
     set({
       user: {
         id: data.id,
         email: data.email,
         created_at: data.created_at,
-        plan: data.plan,
+        plan,
         daily_count: data.daily_count,
         daily_audio_minutes: data.daily_audio_minutes ?? 0,
         last_reset_date: data.last_reset_date,
@@ -80,6 +97,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         display_name: data.display_name ?? undefined,
         avatar_url: data.avatar_url ?? undefined,
         welcome_completed: !!data.welcome_completed,
+        org_id: orgId ?? undefined,
       },
     });
   },
@@ -172,7 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  setPlan: async (plan: 'free' | 'premium') => {
+  setPlan: async (plan: UserPlan) => {
     const { user, session } = get();
     if (user) {
       set({ user: { ...user, plan } });

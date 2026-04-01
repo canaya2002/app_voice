@@ -1,10 +1,12 @@
 // ── User ──────────────────────────────────────────────────────────────────────
 
+export type UserPlan = 'free' | 'premium' | 'enterprise';
+
 export interface User {
   id: string;
   email: string;
   created_at: string;
-  plan: 'free' | 'premium';
+  plan: UserPlan;
   daily_count: number;
   daily_audio_minutes: number;
   last_reset_date: string;
@@ -12,6 +14,77 @@ export interface User {
   display_name?: string;
   avatar_url?: string;
   welcome_completed?: boolean;
+  org_id?: string | null;
+}
+
+// ── Organizations ────────────────────────────────────────────────────────────
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  domain?: string | null;
+  owner_id?: string | null;
+  plan: string;
+  billing_type: 'per_seat' | 'flat';
+  price_per_seat?: number | null;
+  flat_price?: number | null;
+  billing_cycle: 'monthly' | 'annual';
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
+  max_seats: number;
+  seats_used: number;
+  active: boolean;
+  custom_audio_minutes_per_day?: number | null;
+  custom_notes_per_day?: number | null;
+  notes?: string | null;
+  contract_start?: string | null;
+  contract_end?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OrgMemberRole = 'owner' | 'admin' | 'member';
+
+export interface OrganizationMember {
+  id: string;
+  org_id: string;
+  user_id: string;
+  role: OrgMemberRole;
+  status: 'active' | 'suspended' | 'pending';
+  invited_by?: string | null;
+  invited_at: string;
+  joined_at?: string | null;
+  email?: string;
+  display_name?: string;
+}
+
+export interface OrgInvitation {
+  id: string;
+  org_id: string;
+  email: string;
+  role: OrgMemberRole;
+  token: string;
+  invited_by?: string | null;
+  expires_at: string;
+  accepted_at?: string | null;
+  created_at: string;
+}
+
+export interface BillingRecord {
+  id: string;
+  org_id: string;
+  period_start: string;
+  period_end: string;
+  seats_billed: number;
+  amount_charged: number;
+  currency: string;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  status: 'pending' | 'paid' | 'failed' | 'refunded';
+  notes?: string | null;
+  created_at: string;
 }
 
 // ── Output Modes ──────────────────────────────────────────────────────────────

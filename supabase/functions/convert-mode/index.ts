@@ -15,7 +15,7 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_CONVERT_LIMITS = { free: 10, premium: 50 };
+const DAILY_CONVERT_LIMITS: Record<string, number> = { free: 10, premium: 50, enterprise: 9999 };
 const IP_RATE_LIMIT = 20;
 const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
@@ -130,8 +130,26 @@ serve(async (req: Request) => {
   if (!note || note.user_id !== user.id) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   // ── Mode gate ──
-  const { data: profile } = await admin.from("profiles").select("plan, daily_count, last_reset_date").eq("id", user.id).single();
+  const { data: profile } = await admin.from("profiles").select("plan, daily_count, last_reset_date, org_id").eq("id", user.id).single();
   const plan = profile?.plan || "free";
+
+  // Enterprise: verify org active + user not suspended
+  if (profile?.org_id) {
+    const { data: org } = await admin.from("organizations").select("active").eq("id", profile.org_id).single();
+    if (org && !org.active) {
+      return new Response(
+        JSON.stringify({ error: "org_inactive", message: "Tu organización no tiene una suscripción activa. Contacta a tu administrador." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { data: membership } = await admin.from("organization_members").select("status").eq("org_id", profile.org_id).eq("user_id", user.id).single();
+    if (membership && membership.status === "suspended") {
+      return new Response(
+        JSON.stringify({ error: "user_suspended", message: "Tu cuenta en esta organización está suspendida. Contacta a tu administrador." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+  }
 
   if (plan === "free" && !FREE_MODES.includes(target_mode)) {
     return new Response(

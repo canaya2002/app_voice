@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate, Outlet } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
+
+// Admin pages
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminOrganizations from './pages/admin/AdminOrganizations';
+import AdminOrgDetail from './pages/admin/AdminOrgDetail';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminBilling from './pages/admin/AdminBilling';
 
 // ── Types (mirror mobile app) ───────────────────────────────────────────────
 
@@ -1492,6 +1500,17 @@ export default function App() {
       <Routes>
         {/* Public shared note route - no auth required */}
         <Route path="/shared/:token" element={<SharedNotePage />} />
+
+        {/* Admin routes (own layout, no Nav) */}
+        <Route path="/admin" element={
+          !session ? <AuthPage onAuth={() => {}} /> : <AdminLayout />
+        }>
+          <Route index element={<AdminDashboard />} />
+          <Route path="organizations" element={<AdminOrganizations />} />
+          <Route path="organizations/:id" element={<AdminOrgDetail />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="billing" element={<AdminBilling />} />
+        </Route>
 
         {/* Auth-protected routes */}
         <Route path="*" element={

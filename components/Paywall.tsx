@@ -98,7 +98,7 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
   };
 
   // Price from RevenueCat or fallback
-  const priceLabel = pkg?.product?.priceString ?? '$4.99';
+  const priceLabel = pkg?.product?.priceString ?? '$14.99';
   const introOffer = pkg?.product?.introPrice;
   const hasFreeTrial = introOffer && introOffer.price === 0;
 
