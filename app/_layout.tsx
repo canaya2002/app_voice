@@ -77,6 +77,18 @@ export default function RootLayout() {
     return () => { unsubPurchases(); };
   }, [initialize]);
 
+  // 1a. Re-read flags when session changes (covers dev-reset + logout)
+  useEffect(() => {
+    if (loading) return;
+    Promise.all([
+      AsyncStorage.getItem(ONBOARDING_KEY),
+      AsyncStorage.getItem(WELCOME_KEY),
+    ]).then(([obVal, wcVal]) => {
+      setOnboardingDone(obVal === 'true');
+      setWelcomeDone(wcVal === 'true');
+    });
+  }, [session, loading]);
+
   // 1b. Handle deep links for auth (email confirmation, password reset)
   useEffect(() => {
     const handleAuthDeepLink = async (url: string) => {
