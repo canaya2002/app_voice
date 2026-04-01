@@ -33,6 +33,10 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS daily_count INT NOT NULL DE
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS daily_audio_minutes INT NOT NULL DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS premium_interest BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_vocabulary JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS welcome_completed BOOLEAN DEFAULT false;
 
 -- 1b. notes
 -- --------------------------------------------------------------------------

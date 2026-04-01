@@ -229,12 +229,19 @@ export default function WelcomeScreen() {
       try {
         const ext = avatarUri.split('.').pop() ?? 'jpg';
         const path = `${user.id}/avatar.${ext}`;
-        const res = await fetch(avatarUri);
-        const blob = await res.blob();
-        await supabase.storage.from('profiles').upload(path, blob, { upsert: true });
-        const { data } = supabase.storage.from('profiles').getPublicUrl(path);
-        avatarUrl = data.publicUrl;
-      } catch { /* skip */ }
+        const resp = await fetch(avatarUri);
+        const arrayBuf = await resp.arrayBuffer();
+        const { error: upErr } = await supabase.storage
+          .from('profiles')
+          .upload(path, arrayBuf, {
+            upsert: true,
+            contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
+          });
+        if (!upErr) {
+          const { data } = supabase.storage.from('profiles').getPublicUrl(path);
+          avatarUrl = data.publicUrl;
+        }
+      } catch { /* skip avatar upload */ }
     }
     if (user) {
       await supabase.from('profiles').update({

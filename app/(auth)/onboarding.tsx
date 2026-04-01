@@ -3,356 +3,605 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
+  FlatList,
   useWindowDimensions,
+  ViewToken,
 } from 'react-native';
-import RNAnimated, {
+import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
   withSequence,
   withTiming,
   withDelay,
+  withSpring,
   Easing,
-  FadeInLeft,
-  ZoomIn,
+  interpolate,
+  FadeInUp,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, useIsDark, DARK_COLORS } from '@/lib/constants';
-import { shadows } from '@/lib/styles';
+import { COLORS } from '@/lib/constants';
+import { FONT } from '@/lib/styles';
 import { hapticButtonPress, hapticProcessingDone } from '@/lib/haptics';
-import FloatingOrb from '@/components/FloatingOrb';
 import AnimatedPressable from '@/components/AnimatedPressable';
+import AnimatedGradientBg from '@/components/AnimatedGradientBg';
 
 export const ONBOARDING_KEY = 'sythio_onboarding_done';
 
+/* ─── Page data ─────────────────────────────────────────── */
+
 interface OnboardingPage {
-  icon: keyof typeof Ionicons.glyphMap;
-  iconColor: string;
+  id: string;
   title: string;
   subtitle: string;
+  illustration: 'welcome' | 'record' | 'magic' | 'templates' | 'ready';
 }
 
 const PAGES: OnboardingPage[] = [
   {
-    icon: 'mic',
-    iconColor: COLORS.primaryLight,
-    title: 'Habla. Sythio escucha.',
-    subtitle: 'Graba reuniones, ideas, clases o cualquier conversación. Solo toca y habla.',
+    id: 'welcome',
+    title: 'Tu voz\ntiene poder',
+    subtitle: 'Sythio transforma lo que dices en información clara, organizada y lista para usar.',
+    illustration: 'welcome',
   },
   {
-    icon: 'sparkles',
-    iconColor: COLORS.primaryLight,
-    title: 'Un audio, múltiples resultados',
-    subtitle: 'Resumen, tareas, plan de acción, reporte, mensaje listo. Tú eliges el formato.',
+    id: 'record',
+    title: 'Habla.\nSythio escucha.',
+    subtitle: 'Graba reuniones, ideas, clases o cualquier momento importante. Solo toca el botón y habla.',
+    illustration: 'record',
   },
   {
-    icon: 'layers-outline',
-    iconColor: COLORS.primaryLight,
-    title: 'De voz a claridad y acción',
-    subtitle: 'Todo estructurado, exportable y listo para usar. Sin perder ni una idea.',
+    id: 'magic',
+    title: 'Inteligencia\nque entiende',
+    subtitle: 'Resúmenes, tareas, reportes, planes de acción. Un audio, múltiples resultados.',
+    illustration: 'magic',
+  },
+  {
+    id: 'templates',
+    title: 'Plantillas para\ncada momento',
+    subtitle: 'Reunión, idea rápida, clase, brainstorm. Cada contexto tiene su formato ideal.',
+    illustration: 'templates',
+  },
+  {
+    id: 'ready',
+    title: 'Todo listo',
+    subtitle: 'Empieza a transformar tu voz en claridad y acción. Es así de simple.',
+    illustration: 'ready',
   },
 ];
 
-/* ── Pulse Ring (Reanimated) ─────────────────────────────── */
-function PulseRing({ size, delayMs }: { size: number; delayMs: number }) {
-  const progress = useSharedValue(0);
+/* ─── Illustrations ─────────────────────────────────────── */
+
+// Page 1: Sythio logo with breathing glow
+function WelcomeIllustration() {
+  const breathe = useSharedValue(0);
+  const ring1 = useSharedValue(0.8);
+  const ring1Op = useSharedValue(0.2);
+  const ring2 = useSharedValue(0.8);
+  const ring2Op = useSharedValue(0.2);
 
   useEffect(() => {
-    progress.value = withDelay(
-      delayMs,
-      withRepeat(
-        withSequence(
-          withTiming(1, { duration: 2000, easing: Easing.out(Easing.ease) }),
-          withTiming(0, { duration: 0 }),
-        ),
-        -1,
-        false,
-      ),
+    breathe.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2500, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 2500, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
     );
-  }, [progress, delayMs]);
+    ring1.value = withRepeat(
+      withSequence(
+        withTiming(1.4, { duration: 2800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.8, { duration: 0 }),
+      ), -1
+    );
+    ring1Op.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 2800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.2, { duration: 0 }),
+      ), -1
+    );
+    ring2.value = withDelay(900, withRepeat(
+      withSequence(
+        withTiming(1.4, { duration: 2800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.8, { duration: 0 }),
+      ), -1
+    ));
+    ring2Op.value = withDelay(900, withRepeat(
+      withSequence(
+        withTiming(0, { duration: 2800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.2, { duration: 0 }),
+      ), -1
+    ));
+  }, [breathe, ring1, ring1Op, ring2, ring2Op]);
 
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: 0.5 * (1 - progress.value),
-    transform: [{ scale: 1 + progress.value * 0.3 }],
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(breathe.value, [0, 1], [0.06, 0.18]),
+    transform: [{ scale: interpolate(breathe.value, [0, 1], [0.95, 1.08]) }],
+  }));
+  const r1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring1.value }],
+    opacity: ring1Op.value,
+  }));
+  const r2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring2.value }],
+    opacity: ring2Op.value,
   }));
 
   return (
-    <RNAnimated.View
-      style={[
-        {
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 2,
-          borderColor: COLORS.primaryLight,
-        },
-        animStyle,
-      ]}
-    />
-  );
-}
-
-/* ── Page 1: Mic illustration ──────────────────────────── */
-function MicIllustration() {
-  const isDark = useIsDark();
-  return (
-    <View style={illustrationStyles.centered}>
-      <PulseRing size={180} delayMs={0} />
-      <PulseRing size={160} delayMs={400} />
-      <PulseRing size={140} delayMs={800} />
-      <View style={[illustrationStyles.micCircle, { backgroundColor: isDark ? DARK_COLORS.surfaceAlt : COLORS.surfaceAlt }]}>
-        <Ionicons name="mic" size={80} color={COLORS.recording} />
+    <View style={illStyles.container}>
+      <Animated.View style={[illStyles.glow, glowStyle]} />
+      <Animated.View style={[illStyles.ring, r1Style]} />
+      <Animated.View style={[illStyles.ring, r2Style]} />
+      <View style={illStyles.logoCircle}>
+        <Text style={illStyles.logoS}>S</Text>
       </View>
     </View>
   );
 }
 
-/* ── Page 2: Bars illustration ─────────────────────────── */
-const BAR_WIDTHS = ['60%', '80%', '50%', '90%', '70%'] as const;
-const BAR_OPACITIES = [0.15, 0.25, 0.35, 0.45, 0.55] as const;
-
-function SparkleIcon() {
-  const pulse = useSharedValue(0.4);
+// Page 2: Microphone with sound waves
+function RecordIllustration() {
+  const wave1 = useSharedValue(0);
+  const wave2 = useSharedValue(0);
+  const wave3 = useSharedValue(0);
+  const micScale = useSharedValue(1);
 
   useEffect(() => {
-    pulse.value = withRepeat(
+    micScale.value = withRepeat(
+      withSequence(
+        withTiming(1.04, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
+    );
+    wave1.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 0 }),
+      ), -1
+    );
+    wave2.value = withDelay(600, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 0 }),
+      ), -1
+    ));
+    wave3.value = withDelay(1200, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 0 }),
+      ), -1
+    ));
+  }, [micScale, wave1, wave2, wave3]);
+
+  const micStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: micScale.value }],
+  }));
+  const makeWaveStyle = (val: SharedValue<number>) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedStyle(() => ({
+      opacity: interpolate(val.value, [0, 0.5, 1], [0, 0.4, 0]),
+      transform: [{ scale: interpolate(val.value, [0, 1], [1, 1.8]) }],
+    }));
+  const w1Style = makeWaveStyle(wave1);
+  const w2Style = makeWaveStyle(wave2);
+  const w3Style = makeWaveStyle(wave3);
+
+  return (
+    <View style={illStyles.container}>
+      <Animated.View style={[illStyles.waveRing, w1Style]} />
+      <Animated.View style={[illStyles.waveRing, w2Style]} />
+      <Animated.View style={[illStyles.waveRing, w3Style]} />
+      <Animated.View style={[illStyles.micOuter, micStyle]}>
+        <Ionicons name="mic" size={52} color="#FFFFFF" />
+      </Animated.View>
+    </View>
+  );
+}
+
+// Page 3: Sparkle with orbiting elements
+function MagicIllustration() {
+  const mainRotate = useSharedValue(0);
+  const sparkleScale = useSharedValue(1);
+  const orb1 = useSharedValue(0);
+  const orb2 = useSharedValue(0);
+  const orb3 = useSharedValue(0);
+
+  useEffect(() => {
+    mainRotate.value = withRepeat(
+      withTiming(360, { duration: 20000, easing: Easing.linear }), -1
+    );
+    sparkleScale.value = withRepeat(
+      withSequence(
+        withTiming(1.1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.95, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
+    );
+    orb1.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.4, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1,
-      false,
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
     );
-  }, [pulse]);
+    orb2.value = withDelay(400, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
+    ));
+    orb3.value = withDelay(800, withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
+    ));
+  }, [mainRotate, sparkleScale, orb1, orb2, orb3]);
 
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: pulse.value,
+  const rotateStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${mainRotate.value}deg` }],
   }));
+  const sparkleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: sparkleScale.value }],
+  }));
+  const makeOrbStyle = (val: SharedValue<number>) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedStyle(() => ({
+      opacity: interpolate(val.value, [0, 1], [0.4, 1]),
+      transform: [{ scale: interpolate(val.value, [0, 1], [0.8, 1.1]) }],
+    }));
+  const o1Style = makeOrbStyle(orb1);
+  const o2Style = makeOrbStyle(orb2);
+  const o3Style = makeOrbStyle(orb3);
 
   return (
-    <RNAnimated.View
-      style={[{ position: 'absolute', top: -8, right: -8 }, animStyle]}
-    >
-      <Ionicons name="sparkles" size={20} color={COLORS.warning} />
-    </RNAnimated.View>
-  );
-}
-
-function BarsIllustration() {
-  const isDark = useIsDark();
-  return (
-    <View style={illustrationStyles.barsContainer}>
-      <SparkleIcon />
-      {BAR_WIDTHS.map((w, i) => (
-        <RNAnimated.View
-          key={i}
-          entering={FadeInLeft.delay(i * 200).springify().damping(14)}
-          style={{
-            width: w,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: isDark ? DARK_COLORS.primary : COLORS.primary,
-            opacity: BAR_OPACITIES[i],
-            marginBottom: i < BAR_WIDTHS.length - 1 ? 10 : 0,
-          }}
-        />
-      ))}
+    <View style={illStyles.container}>
+      {/* Orbiting ring */}
+      <Animated.View style={[illStyles.orbitRing, rotateStyle]}>
+        <Animated.View style={[illStyles.orbitDot, { top: 0, left: '50%', marginLeft: -6 }, o1Style]} />
+        <Animated.View style={[illStyles.orbitDot, illStyles.orbitDot2, { bottom: 10, left: 10 }, o2Style]} />
+        <Animated.View style={[illStyles.orbitDot, illStyles.orbitDot3, { bottom: 10, right: 10 }, o3Style]} />
+      </Animated.View>
+      <Animated.View style={[illStyles.magicCenter, sparkleStyle]}>
+        <Ionicons name="sparkles" size={56} color={COLORS.accentGold} />
+      </Animated.View>
     </View>
   );
 }
 
-/* ── Page 3: Network illustration ──────────────────────── */
-const NODE_COLORS = [COLORS.primary, COLORS.info, COLORS.success, COLORS.warning];
-const NODE_OFFSETS = [
-  { top: -30, left: -30 },
-  { top: -30, right: -30 },
-  { bottom: -30, left: -30 },
-  { bottom: -30, right: -30 },
+// Page 4: Grid of template icons
+const TEMPLATE_ITEMS = [
+  { icon: 'people-outline' as const, label: 'Reuniones', color: '#0EA5E9' },
+  { icon: 'flash-outline' as const, label: 'Ideas', color: '#F59E0B' },
+  { icon: 'school-outline' as const, label: 'Clases', color: '#34C759' },
+  { icon: 'bulb-outline' as const, label: 'Brainstorm', color: '#8B5CF6' },
+  { icon: 'business-outline' as const, label: 'Clientes', color: '#A78BFA' },
+  { icon: 'book-outline' as const, label: 'Diario', color: '#EC4899' },
 ];
 
-function GrowingLine({
-  index,
-  position,
-  color,
-}: {
-  index: number;
-  position: (typeof NODE_OFFSETS)[number];
-  color: string;
-}) {
-  const lineWidth = useSharedValue(0);
-
-  useEffect(() => {
-    lineWidth.value = withDelay(
-      index * 200 + 300,
-      withTiming(50, { duration: 600, easing: Easing.out(Easing.ease) }),
-    );
-  }, [lineWidth, index]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    width: lineWidth.value,
-  }));
-
-  const isTop = 'top' in position;
-  const isLeft = 'left' in position;
-
+function TemplatesIllustration() {
   return (
-    <RNAnimated.View
-      style={[
-        {
-          position: 'absolute',
-          height: 2,
-          backgroundColor: color,
-          opacity: 0.4,
-          transform: [
-            { rotate: `${isTop ? '' : '-'}${isLeft ? '-' : ''}45deg` },
-          ],
-        },
-        isTop ? { top: 18 } : { bottom: 18 },
-        isLeft ? { left: 18 } : { right: 18 },
-        animStyle,
-      ]}
-    />
-  );
-}
-
-function NetworkIllustration() {
-  const isDark = useIsDark();
-  const nodeColors = [isDark ? DARK_COLORS.primary : COLORS.primary, COLORS.info, COLORS.success, COLORS.warning];
-  return (
-    <View style={illustrationStyles.networkContainer}>
-      <View style={[illustrationStyles.centerNode, { backgroundColor: isDark ? DARK_COLORS.primary : COLORS.primary }]} />
-      {NODE_OFFSETS.map((pos, i) => (
-        <GrowingLine key={`line-${i}`} index={i} position={pos} color={nodeColors[i]} />
-      ))}
-      {NODE_OFFSETS.map((pos, i) => (
-        <RNAnimated.View
-          key={`node-${i}`}
-          entering={ZoomIn.delay(i * 200).springify().damping(12)}
-          style={[
-            {
-              position: 'absolute',
-              width: 20,
-              height: 20,
-              borderRadius: 10,
-              backgroundColor: nodeColors[i],
-            },
-            pos as object,
-          ]}
-        />
+    <View style={illStyles.templateGrid}>
+      {TEMPLATE_ITEMS.map((item, i) => (
+        <Animated.View
+          key={item.label}
+          entering={FadeInUp.delay(i * 100 + 200).duration(500).springify().damping(14)}
+          style={illStyles.templateCard}
+        >
+          <View style={[illStyles.templateIcon, { backgroundColor: item.color + '25' }]}>
+            <Ionicons name={item.icon} size={24} color={item.color} />
+          </View>
+          <Text style={illStyles.templateLabel}>{item.label}</Text>
+        </Animated.View>
       ))}
     </View>
   );
 }
 
-const illustrationStyles = StyleSheet.create({
-  centered: {
+// Page 5: Checkmark with celebration
+function ReadyIllustration() {
+  const checkScale = useSharedValue(0);
+  const glowOp = useSharedValue(0);
+  const ring1 = useSharedValue(0.6);
+  const ring1Op = useSharedValue(0);
+
+  useEffect(() => {
+    checkScale.value = withDelay(300, withSpring(1, { damping: 8, stiffness: 120, mass: 0.6 }));
+    glowOp.value = withDelay(500, withRepeat(
+      withSequence(
+        withTiming(0.15, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.05, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true
+    ));
+    ring1.value = withDelay(600, withRepeat(
+      withSequence(
+        withTiming(1.5, { duration: 3000, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.6, { duration: 0 }),
+      ), -1
+    ));
+    ring1Op.value = withDelay(600, withRepeat(
+      withSequence(
+        withTiming(0, { duration: 3000, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.25, { duration: 0 }),
+      ), -1
+    ));
+  }, [checkScale, glowOp, ring1, ring1Op]);
+
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOp.value,
+  }));
+  const r1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring1.value }],
+    opacity: ring1Op.value,
+  }));
+
+  return (
+    <View style={illStyles.container}>
+      <Animated.View style={[illStyles.readyGlow, glowStyle]} />
+      <Animated.View style={[illStyles.readyRing, r1Style]} />
+      <Animated.View style={[illStyles.readyCircle, checkStyle]}>
+        <Ionicons name="checkmark" size={56} color="#FFFFFF" />
+      </Animated.View>
+    </View>
+  );
+}
+
+const ILLUSTRATION_MAP: Record<string, React.FC> = {
+  welcome: WelcomeIllustration,
+  record: RecordIllustration,
+  magic: MagicIllustration,
+  templates: TemplatesIllustration,
+  ready: ReadyIllustration,
+};
+
+const illStyles = StyleSheet.create({
+  container: {
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Welcome
+  glow: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(143, 211, 255, 0.3)',
+  },
+  ring: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  logoCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  logoS: {
+    fontSize: 48,
+    fontFamily: FONT.bold,
+    color: '#FFFFFF',
+    letterSpacing: -1,
+  },
+  // Record
+  waveRing: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 59, 48, 0.6)',
+  },
+  micOuter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(255, 59, 48, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  // Magic
+  orbitRing: {
+    position: 'absolute',
     width: 180,
     height: 180,
-    justifyContent: 'center',
+    borderRadius: 90,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+    borderStyle: 'dashed',
+  },
+  orbitDot: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.accentGold,
+  },
+  orbitDot2: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  orbitDot3: {
+    backgroundColor: COLORS.success,
+  },
+  magicCenter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
     alignItems: 'center',
-  },
-  micCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.surfaceAlt,
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  barsContainer: {
-    width: 180,
-    paddingVertical: 20,
-    paddingHorizontal: 10,
-    alignItems: 'flex-start',
-  },
-  networkContainer: {
-    width: 140,
-    height: 140,
+  // Templates
+  templateGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 12,
+    width: 240,
   },
-  centerNode: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.primary,
-    opacity: 0.1,
+  templateCard: {
+    width: 104,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  templateIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  templateLabel: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  // Ready
+  readyGlow: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(52, 199, 89, 0.25)',
+  },
+  readyRing: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    borderWidth: 1.5,
+    borderColor: 'rgba(52, 199, 89, 0.2)',
+  },
+  readyCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(52, 199, 89, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.success,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 8,
   },
 });
 
-const ILLUSTRATIONS: React.FC[] = [
-  MicIllustration,
-  BarsIllustration,
-  NetworkIllustration,
-];
+/* ─── Animated Dot Indicator ────────────────────────────── */
 
-/* ── Main screen ───────────────────────────────────────── */
-const LIGHT_GRADIENT: [string, string, string] = ['#FAFAFA', '#F0F7FF', '#E8F4FF'];
-const DARK_GRADIENT: [string, string, string] = ['#0B0B0B', '#0D1117', '#101820'];
+function DotIndicator({ total, current }: { total: number; current: number }) {
+  return (
+    <View style={styles.dots}>
+      {Array.from({ length: total }).map((_, i) => {
+        const isActive = i === current;
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              styles.dot,
+              {
+                width: isActive ? 28 : 8,
+                backgroundColor: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.25)',
+              },
+            ]}
+            layout={withSpring({ damping: 18, stiffness: 200 }) as any}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/* ─── Main Screen ───────────────────────────────────────── */
 
 export default function OnboardingScreen() {
-  const { width, height: screenHeight } = useWindowDimensions();
-  const isDark = useIsDark();
-  const themeColors = isDark ? DARK_COLORS : COLORS;
-  const scrollRef = useRef<ScrollView>(null);
+  const { width, height } = useWindowDimensions();
+  const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageHeight, setPageHeight] = useState(screenHeight * 0.55);
 
-  const handleScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offsetX = e.nativeEvent.contentOffset.x;
-      const page = Math.round(offsetX / width);
-      if (page >= 0 && page < PAGES.length) {
-        if (page !== currentPage) hapticButtonPress();
-        setCurrentPage(page);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length > 0 && viewableItems[0].index != null) {
+        setCurrentPage(viewableItems[0].index);
       }
-    },
-    [width, currentPage],
-  );
+    }
+  ).current;
 
-  const handleNext = () => {
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+  const handleNext = useCallback(() => {
+    hapticButtonPress();
     if (currentPage < PAGES.length - 1) {
-      hapticButtonPress();
-      const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
-      scrollRef.current?.scrollTo({ x: nextPage * width, animated: true });
+      flatListRef.current?.scrollToIndex({ index: currentPage + 1, animated: true });
     } else {
       handleComplete();
     }
-  };
+  }, [currentPage]);
 
   const handleComplete = async () => {
     hapticProcessingDone();
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
-    if (__DEV__) console.log('[onboarding] flag saved, navigating to login');
     router.replace('/(auth)/login');
   };
 
   const isLastPage = currentPage === PAGES.length - 1;
 
-  return (
-    <LinearGradient
-      colors={isDark ? DARK_GRADIENT : LIGHT_GRADIENT}
-      style={styles.gradient}
-    >
-      <SafeAreaView style={styles.container}>
-        {/* Floating orbs */}
-        <FloatingOrb size={300} color={COLORS.primaryLight} top={-80} right={-100} />
-        <FloatingOrb size={220} color={COLORS.primary} top={400} left={-60} delay={600} />
+  const renderPage = useCallback(
+    ({ item, index }: { item: OnboardingPage; index: number }) => {
+      const Illustration = ILLUSTRATION_MAP[item.illustration];
+      return (
+        <View style={[styles.page, { width }]}>
+          <View style={styles.illustrationArea}>
+            <Illustration />
+          </View>
+          <View style={styles.textArea}>
+            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.subtitle}>{item.subtitle}</Text>
+          </View>
+        </View>
+      );
+    },
+    [width]
+  );
 
-        {/* Header with skip button */}
-        <View style={styles.headerRow}>
+  return (
+    <View style={styles.root}>
+      <AnimatedGradientBg />
+      <SafeAreaView style={styles.safe}>
+        {/* Skip */}
+        <View style={styles.header}>
           {!isLastPage ? (
-            <AnimatedPressable onPress={handleComplete} style={styles.skipButton}>
-              <Text style={[styles.skipText, { color: themeColors.textSecondary }]}>Saltar</Text>
+            <AnimatedPressable onPress={handleComplete} style={styles.skipBtn}>
+              <Text style={styles.skipText}>Saltar</Text>
             </AnimatedPressable>
           ) : (
             <View />
@@ -360,196 +609,143 @@ export default function OnboardingScreen() {
         </View>
 
         {/* Pages */}
-        <View
-          style={styles.pagesContainer}
-          onLayout={(e) => setPageHeight(e.nativeEvent.layout.height)}
-        >
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={handleScrollEnd}
-            scrollEventThrottle={16}
-            decelerationRate="fast"
-            bounces={false}
-          >
-            {PAGES.map((page, index) => {
-              const Illustration = ILLUSTRATIONS[index];
-              return (
-                <View
-                  key={index}
-                  style={[styles.page, { width, height: pageHeight }]}
-                >
-                  <View style={styles.illustrationWrapper}>
-                    <Illustration />
-                  </View>
-                  <Text style={[styles.title, { color: themeColors.textPrimary }]}>{page.title}</Text>
-                  <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{page.subtitle}</Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <FlatList
+          ref={flatListRef}
+          data={PAGES}
+          renderItem={renderPage}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          decelerationRate="fast"
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        />
 
-        {/* Bottom section */}
+        {/* Bottom */}
         <View style={styles.bottom}>
-          {/* Dot indicators */}
-          <View style={styles.dots}>
-            {PAGES.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  currentPage === index
-                    ? [styles.dotActive, { backgroundColor: isDark ? COLORS.primaryLight : COLORS.primary }]
-                    : [styles.dotInactive, { borderColor: isDark ? DARK_COLORS.border : COLORS.border }],
-                ]}
-              />
-            ))}
-          </View>
+          <DotIndicator total={PAGES.length} current={currentPage} />
 
-          {/* Action button */}
           {isLastPage ? (
-            <AnimatedPressable
-              onPress={handleNext}
-              style={styles.startButtonOuter}
-              scaleDown={0.96}
-            >
-              <LinearGradient
-                colors={isDark ? [COLORS.primaryLight, '#5BA8D0'] : [COLORS.primary, COLORS.primaryDark]}
-                style={styles.startButton}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.startButtonText}>Comenzar con Sythio</Text>
-              </LinearGradient>
+            <AnimatedPressable onPress={handleNext} style={styles.ctaBtn} scaleDown={0.96}>
+              <Text style={styles.ctaText}>Comenzar con Sythio</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
             </AnimatedPressable>
           ) : (
-            <AnimatedPressable onPress={handleNext} style={styles.nextButton}>
-              <LinearGradient
-                colors={isDark ? [COLORS.primaryLight, '#5BA8D0'] : [COLORS.primary, COLORS.primaryDark]}
-                style={styles.nextButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
-              </LinearGradient>
+            <AnimatedPressable onPress={handleNext} style={styles.nextBtn} scaleDown={0.93}>
+              <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
             </AnimatedPressable>
           )}
         </View>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
+/* ─── Styles ────────────────────────────────────────────── */
+
 const styles = StyleSheet.create({
-  gradient: {
+  root: {
+    flex: 1,
+    backgroundColor: '#050510',
+  },
+  safe: {
     flex: 1,
   },
-  container: {
-    flex: 1,
-  },
-  headerRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    height: 48,
     alignItems: 'center',
-    paddingHorizontal: 20,
-    height: 44,
   },
-  skipButton: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+  skipBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   skipText: {
     fontSize: 15,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-  },
-  pagesContainer: {
-    flex: 1,
+    fontFamily: FONT.medium,
+    color: 'rgba(255,255,255,0.7)',
   },
   page: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  illustrationWrapper: {
-    marginBottom: 24,
+  illustrationArea: {
+    marginBottom: 48,
     alignItems: 'center',
+    justifyContent: 'center',
+    height: 240,
+  },
+  textArea: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
+    fontSize: 34,
+    fontFamily: FONT.bold,
+    color: '#FFFFFF',
     textAlign: 'center',
-    marginTop: 16,
+    letterSpacing: -0.8,
+    lineHeight: 42,
+    marginBottom: 16,
   },
   subtitle: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
+    fontSize: 17,
+    fontFamily: FONT.regular,
+    color: 'rgba(255,255,255,0.65)',
     textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 16,
-    marginTop: 12,
+    lineHeight: 26,
+    maxWidth: 320,
   },
   bottom: {
     paddingHorizontal: 32,
-    paddingBottom: 24,
-    gap: 20,
+    paddingBottom: 28,
+    gap: 24,
     alignItems: 'center',
   },
   dots: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    height: 8,
   },
   dot: {
-    borderRadius: 4,
-  },
-  dotActive: {
-    width: 24,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.primary,
   },
-  dotInactive: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: 'transparent',
-  },
-  startButtonOuter: {
-    width: '100%',
-    ...shadows.brand,
-  },
-  startButton: {
-    width: '100%',
-    height: 56,
-    borderRadius: 18,
-    justifyContent: 'center',
+  nextBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  startButtonText: {
+  ctaBtn: {
+    width: '100%',
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  ctaText: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: FONT.semibold,
     color: '#FFFFFF',
-  },
-  nextButton: {
-    ...shadows.brand,
-  },
-  nextButtonGradient: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

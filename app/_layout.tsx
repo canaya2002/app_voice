@@ -15,6 +15,7 @@ import { configurePurchases, identifyUser, checkSubscriptionStatus, onCustomerIn
 import { registerForPushNotifications } from '@/lib/notifications';
 import ToastProvider from '@/components/Toast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import SplashLoader from '@/components/SplashLoader';
 
 const ONBOARDING_KEY = 'sythio_onboarding_done';
 const WELCOME_KEY = 'sythio_welcome_done';
@@ -175,7 +176,7 @@ export default function RootLayout() {
   }, [session, loading, onboardingDone, welcomeDone, segments, router]);
 
   if (loading || onboardingDone === null || welcomeDone === null || !fontsLoaded) {
-    return null;
+    return <SplashLoader />;
   }
 
   return (

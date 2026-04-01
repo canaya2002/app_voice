@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedProps, withTiming, Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -268,13 +269,14 @@ export default function ProfileScreen() {
     }
   };
 
-  const getInitials = (email: string): string => {
-    const name = email.split('@')[0].replace(/[._-]/g, ' ');
-    const parts = name.split(/\s+/).filter(Boolean);
+  const getInitials = (str: string): string => {
+    const clean = str.includes('@') ? str.split('@')[0].replace(/[._-]/g, ' ') : str;
+    const parts = clean.split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return (parts[0]?.[0] ?? '?').toUpperCase();
   };
-  const initials = getInitials(user?.email ?? '');
+  const displayName = user?.display_name || user?.email || '';
+  const initials = getInitials(displayName);
 
   const notesThisMonth = notes.filter((n) => {
     const noteDate = new Date(n.created_at);
@@ -313,18 +315,27 @@ export default function ProfileScreen() {
 
         {/* Avatar + identity */}
         <View style={styles.profileSection}>
-          <LinearGradient
-            colors={['#0B0B0B', '#2A2A2A']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.avatarCircle}
-          >
-            <Text style={styles.avatarText}>{initials}</Text>
-          </LinearGradient>
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient
+              colors={['#0B0B0B', '#2A2A2A']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatarCircle}
+            >
+              <Text style={styles.avatarText}>{initials}</Text>
+            </LinearGradient>
+          )}
 
           <Animated.Text entering={FadeInUp.delay(150).duration(400)} style={styles.name}>
-            {user?.email ?? ''}
+            {displayName}
           </Animated.Text>
+          {user?.display_name && user?.email ? (
+            <Animated.Text entering={FadeInUp.delay(180).duration(400)} style={styles.emailSub}>
+              {user.email}
+            </Animated.Text>
+          ) : null}
 
           <Animated.View entering={FadeInUp.delay(200).duration(400)} style={styles.planBadge}>
             <Ionicons
@@ -604,6 +615,31 @@ export default function ProfileScreen() {
             <Ionicons name="trash-outline" size={20} color={COLORS.error} />
             <Text style={[styles.accountRowLabel, { color: COLORS.error }]}>Eliminar cuenta</Text>
           </AnimatedPressable>
+
+          {__DEV__ && (
+            <>
+              <View style={[styles.accountSeparator, { backgroundColor: colors.border }]} />
+              <AnimatedPressable
+                style={styles.logoutButton}
+                onPress={() => {
+                  Alert.alert('Dev Reset', 'Borrar onboarding + welcome para empezar de cero?', [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Reset',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await AsyncStorage.multiRemove(['sythio_onboarding_done', 'sythio_welcome_done']);
+                        await logout();
+                      },
+                    },
+                  ]);
+                }}
+              >
+                <Ionicons name="refresh-outline" size={20} color="#8B5CF6" />
+                <Text style={[styles.accountRowLabel, { color: '#8B5CF6' }]}>Dev Reset (primera vez)</Text>
+              </AnimatedPressable>
+            </>
+          )}
         </Animated.View>
 
         <View style={{ height: 100 }} />
@@ -735,6 +771,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
   avatarText: {
     fontSize: 22,
     fontWeight: '700',
@@ -745,6 +791,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginTop: 14,
+  },
+  emailSub: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 4,
   },
   planBadge: {
     flexDirection: 'row',
