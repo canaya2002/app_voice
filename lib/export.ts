@@ -210,6 +210,23 @@ function buildModeHtml(mode: OutputMode, result: Record<string, unknown>): strin
       if (structured) html += `<h2>Versión estructurada</h2><p>${escapeHtml(structured).replace(/\n/g, '<br/>')}</p>`;
       return appendCharts(html, result);
     }
+    case 'outline': {
+      const sections = rArr(result.sections);
+      let html = '';
+      sections.forEach((section, idx) => {
+        const heading = s(section.heading);
+        const pts = sArr(section.points);
+        const subs = rArr(section.subsections);
+        html += `<h2>${idx + 1}. ${escapeHtml(heading)}</h2>`;
+        if (pts.length) html += `<ul>${pts.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
+        subs.forEach((sub) => {
+          html += `<h3 style="margin-left:20px;">${escapeHtml(s(sub.heading))}</h3>`;
+          const subPts = sArr(sub.points);
+          if (subPts.length) html += `<ul style="margin-left:20px;">${subPts.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
+        });
+      });
+      return html;
+    }
     default:
       return `<pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>`;
   }

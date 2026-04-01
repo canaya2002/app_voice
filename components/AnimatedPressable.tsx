@@ -15,6 +15,7 @@ const SPRING_UP = { damping: 10, stiffness: 200, mass: 0.3 };
 interface AnimatedPressableProps {
   children: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
   haptic?: boolean;
@@ -25,6 +26,7 @@ interface AnimatedPressableProps {
 export default function AnimatedPressable({
   children,
   onPress,
+  onLongPress,
   style,
   disabled = false,
   haptic = true,
@@ -34,7 +36,7 @@ export default function AnimatedPressable({
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
 
-  const gesture = Gesture.Tap()
+  const tap = Gesture.Tap()
     .enabled(!disabled)
     .onBegin(() => {
       scale.value = withSpring(scaleDown, SPRING_DOWN);
@@ -50,6 +52,19 @@ export default function AnimatedPressable({
         runOnJS(onPress)();
       }
     });
+
+  const longPress = Gesture.LongPress()
+    .enabled(!disabled && !!onLongPress)
+    .minDuration(500)
+    .onStart(() => {
+      scale.value = withSpring(1, SPRING_UP);
+      opacity.value = withSpring(1, SPRING_UP);
+      if (onLongPress) {
+        runOnJS(onLongPress)();
+      }
+    });
+
+  const gesture = onLongPress ? Gesture.Race(longPress, tap) : tap;
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

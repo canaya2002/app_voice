@@ -56,6 +56,7 @@ const MODE_LABELS: Record<string, string> = {
   summary: 'Resumen', tasks: 'Tareas', action_plan: 'Plan de acción',
   clean_text: 'Texto limpio', executive_report: 'Reporte ejecutivo',
   ready_message: 'Mensaje listo', study: 'Estudio', ideas: 'Ideas',
+  outline: 'Outline',
 };
 
 function escapeHtml(text: string): string {
@@ -132,6 +133,27 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
               {loading ? 'Cargando...' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}
             </button>
           </form>
+          {/* Social login */}
+          <div className="auth-social">
+            <div className="auth-divider"><span>o continúa con</span></div>
+            <div className="auth-social-row">
+              <button className="auth-social-btn" onClick={async () => {
+                const { error: e } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+                if (e) setError(e.message);
+              }}>
+                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92A8.78 8.78 0 0 0 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3.01-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>
+                Google
+              </button>
+              <button className="auth-social-btn" onClick={async () => {
+                const { error: e } = await supabase.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: window.location.origin } });
+                if (e) setError(e.message);
+              }}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><path d="M14.94 15.26c-.68.98-1.42 1.96-2.54 1.98-1.12.02-1.48-.66-2.76-.66s-1.68.64-2.74.68c-1.08.04-1.9-1.06-2.58-2.04C3 13.16 1.94 9.52 3.34 7.06a4.18 4.18 0 0 1 3.52-2.14c1.08-.02 2.1.72 2.76.72.66 0 1.9-.9 3.2-.76.54.02 2.08.22 3.06 1.66-.08.04-1.82 1.06-1.8 3.18.02 2.52 2.22 3.36 2.24 3.38-.02.04-.34 1.2-1.38 2.16zM11.14.56c.76-.92 2.02-1.6 3.08-1.64.14 1.2-.34 2.38-1.08 3.26-.74.88-1.96 1.56-3.14 1.46-.16-1.16.4-2.38 1.14-3.08z"/></svg>
+                Apple
+              </button>
+            </div>
+          </div>
+
           <p className="auth-link">
             {isRegister ? '¿Ya tienes cuenta? ' : '¿No tienes cuenta? '}
             <a href="#" onClick={e => { e.preventDefault(); setIsRegister(!isRegister); setError(''); }}>
@@ -181,7 +203,9 @@ function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
       <div className="nav-inner">
         <Link to="/" className="nav-brand">Sythio</Link>
         <div className="nav-right">
-          <Link to="/trash" className="btn-logout" title="Papelera">🗑️</Link>
+          <Link to="/workspaces" className="nav-link" title="Workspaces">👥 Workspaces</Link>
+          <Link to="/integrations" className="nav-link" title="Integraciones">⚡ Integraciones</Link>
+          <Link to="/trash" className="nav-link" title="Papelera">🗑️</Link>
           <span className="nav-email">{email}</span>
           <button className="btn-logout" onClick={onLogout}>Cerrar sesión</button>
         </div>
@@ -199,6 +223,8 @@ function Dashboard() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -231,8 +257,32 @@ function Dashboard() {
   return (
     <div className="container">
       <div className="dashboard-header">
-        <h1>Mis notas</h1>
-        <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} procesadas</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h1>Mis notas</h1>
+            <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} procesadas</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {selectMode ? (
+              <>
+                <button className="action-btn" onClick={() => {
+                  const sel = notes.filter(n => selected.has(n.id));
+                  sel.forEach(n => downloadDOCX(n));
+                  setSelectMode(false); setSelected(new Set());
+                }} disabled={selected.size === 0}>📥 Exportar {selected.size}</button>
+                <button className="action-btn" onClick={async () => {
+                  if (!confirm(`¿Eliminar ${selected.size} notas?`)) return;
+                  for (const nId of selected) await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', nId);
+                  setNotes(prev => prev.filter(n => !selected.has(n.id)));
+                  setSelectMode(false); setSelected(new Set());
+                }} disabled={selected.size === 0} style={{ color: 'var(--error)' }}>🗑️ Eliminar {selected.size}</button>
+                <button className="action-btn" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>✕ Cancelar</button>
+              </>
+            ) : (
+              <button className="action-btn" onClick={() => setSelectMode(true)}>☑️ Seleccionar</button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Folders */}
@@ -276,21 +326,33 @@ function Dashboard() {
       ) : (
         <div className="note-list">
           {filtered.map(note => (
-            <Link to={`/note/${note.id}`} key={note.id} className="note-card">
-              <h3>{note.title}</h3>
-              <p>{note.summary || note.transcript?.slice(0, 120)}</p>
-              <div className="note-meta">
-                <span>{formatDate(note.created_at)}</span>
-                <span>{formatDuration(note.audio_duration)}</span>
-                {note.is_conversation && <span className="note-badge">👥 {note.speakers_detected} hablantes</span>}
-                {note.template && <span className="note-badge">{note.template}</span>}
-                {note.folder_id && folders.find(f => f.id === note.folder_id) && (
-                  <span className="note-badge" style={{ borderLeft: `3px solid ${folders.find(f => f.id === note.folder_id)!.color}` }}>
-                    {folders.find(f => f.id === note.folder_id)!.name}
-                  </span>
-                )}
-              </div>
-            </Link>
+            <div key={note.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {selectMode && (
+                <label className="batch-checkbox">
+                  <input type="checkbox" checked={selected.has(note.id)} onChange={() => {
+                    setSelected(prev => { const n = new Set(prev); n.has(note.id) ? n.delete(note.id) : n.add(note.id); return n; });
+                  }} />
+                  <span className="checkmark" />
+                </label>
+              )}
+              <Link to={selectMode ? '#' : `/note/${note.id}`} className="note-card" style={{ flex: 1 }}
+                onClick={selectMode ? (e) => { e.preventDefault(); setSelected(prev => { const n = new Set(prev); n.has(note.id) ? n.delete(note.id) : n.add(note.id); return n; }); } : undefined}
+              >
+                <h3>{note.title}</h3>
+                <p>{note.summary || note.transcript?.slice(0, 120)}</p>
+                <div className="note-meta">
+                  <span>{formatDate(note.created_at)}</span>
+                  <span>{formatDuration(note.audio_duration)}</span>
+                  {note.is_conversation && <span className="note-badge">👥 {note.speakers_detected} hablantes</span>}
+                  {note.template && <span className="note-badge">{note.template}</span>}
+                  {note.folder_id && folders.find(f => f.id === note.folder_id) && (
+                    <span className="note-badge" style={{ borderLeft: `3px solid ${folders.find(f => f.id === note.folder_id)!.color}` }}>
+                      {folders.find(f => f.id === note.folder_id)!.name}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            </div>
           ))}
         </div>
       )}
@@ -379,6 +441,18 @@ function NoteDetail() {
   const [titleDraft, setTitleDraft] = useState('');
   const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
   const [speakerDraft, setSpeakerDraft] = useState('');
+  // Channel sharing
+  const [showChannelShare, setShowChannelShare] = useState(false);
+  const [wsChannels, setWsChannels] = useState<{id:string;name:string;workspace_name:string}[]>([]);
+  // Images
+  const [noteImages, setNoteImages] = useState<string[]>([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  // Comments
+  const [comments, setComments] = useState<{id:string; text:string; created_at:string; user_id:string}[]>([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  // Highlights
+  const [highlights, setHighlights] = useState<number[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -393,7 +467,13 @@ function NoteDetail() {
       }
       setModeResults((modesRes.data ?? []) as ModeResult[]);
       setFolders((foldersRes.data ?? []) as Folder[]);
+      setHighlights(((noteRes.data as any)?.highlights as number[]) ?? []);
+      setNoteImages(((noteRes.data as any)?.images as string[]) ?? []);
       setLoading(false);
+    });
+    // Fetch comments
+    supabase.from('comments').select('*').eq('note_id', id).order('created_at').then(({ data }) => {
+      setComments((data ?? []) as any[]);
     });
   }, [id]);
 
@@ -551,7 +631,42 @@ function NoteDetail() {
           <button className="action-btn" onClick={() => downloadDOCX(note)}>📝 Word</button>
           {note.segments?.length > 0 && <button className="action-btn" onClick={handleDownloadSrt}>🎬 SRT</button>}
           <button className="action-btn" onClick={() => handleCopy(note.transcript)}>📝 Transcripción</button>
+          <button className="action-btn" onClick={async () => {
+            const session = (await supabase.auth.getSession()).data.session;
+            if (!session) return;
+            const { data: memberships } = await supabase.from('workspace_members').select('workspace_id').eq('user_id', session.user.id);
+            if (!memberships?.length) { alert('No tienes workspaces. Crea uno desde Workspaces.'); return; }
+            const wsIds = memberships.map(m => m.workspace_id);
+            const { data: wsList } = await supabase.from('workspaces').select('id, name').in('id', wsIds);
+            const { data: chList } = await supabase.from('channels').select('id, name, workspace_id').in('workspace_id', wsIds);
+            const mapped = (chList || []).map(ch => ({ id: ch.id, name: ch.name, workspace_name: (wsList || []).find(w => w.id === ch.workspace_id)?.name || '' }));
+            if (mapped.length === 0) { alert('No hay canales en tus workspaces. Crea uno primero.'); return; }
+            setWsChannels(mapped);
+            setShowChannelShare(true);
+          }}>📢 Canal</button>
         </div>
+
+        {/* Channel share dropdown */}
+        {showChannelShare && wsChannels.length > 0 && (
+          <div className="share-banner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Compartir a canal</span>
+              <button onClick={() => setShowChannelShare(false)} style={{ background: 'none', fontSize: 16, color: 'var(--text3)' }}>×</button>
+            </div>
+            {wsChannels.map(ch => (
+              <button key={ch.id} className="action-btn" style={{ justifyContent: 'flex-start', width: '100%' }} onClick={async () => {
+                const session = (await supabase.auth.getSession()).data.session;
+                if (!session) return;
+                const { error } = await supabase.from('channel_notes').insert({ channel_id: ch.id, note_id: id, shared_by: session.user.id });
+                if (error?.code === '23505') alert('Ya está compartida en ese canal');
+                else if (error) alert('Error: ' + error.message);
+                else { alert(`Compartida en #${ch.name}`); setShowChannelShare(false); }
+              }}>
+                #{ch.name} <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 4 }}>{ch.workspace_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Share link banner */}
         {note.share_token && (
@@ -614,6 +729,95 @@ function NoteDetail() {
           </div>
         )}
 
+        {/* Images */}
+        <div className="note-section">
+          <h2>Imágenes ({noteImages.length})</h2>
+          <div className="note-images">
+            {noteImages.map((path, idx) => (
+              <div key={idx} className="note-image-wrap">
+                <img src={`https://oewjbeqwihhzuvbsfctf.supabase.co/storage/v1/object/public/note-images/${path}`} alt="" className="note-image" />
+                <button className="note-image-remove" onClick={async () => {
+                  await supabase.storage.from('note-images').remove([path]);
+                  const updated = noteImages.filter((_,i) => i !== idx);
+                  setNoteImages(updated);
+                  await supabase.from('notes').update({ images: updated }).eq('id', id);
+                }}>×</button>
+              </div>
+            ))}
+            <label className="note-image-add">
+              <input type="file" accept="image/*" hidden onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file || !id) return;
+                setUploadingImage(true);
+                const session = (await supabase.auth.getSession()).data.session;
+                if (!session) { setUploadingImage(false); return; }
+                const ext = file.name.split('.').pop() || 'jpg';
+                const fileName = `${session.user.id}/${id}_${Date.now()}.${ext}`;
+                const { error } = await supabase.storage.from('note-images').upload(fileName, file);
+                if (!error) {
+                  const updated = [...noteImages, fileName];
+                  setNoteImages(updated);
+                  await supabase.from('notes').update({ images: updated }).eq('id', id);
+                }
+                setUploadingImage(false);
+                e.target.value = '';
+              }} />
+              {uploadingImage ? '...' : '+ Imagen'}
+            </label>
+          </div>
+        </div>
+
+        {/* Comments */}
+        <div className="note-section">
+          <h2>Comentarios ({comments.length})</h2>
+          <div className="comments-section">
+            {comments.length === 0 && <p className="comments-empty">Sin comentarios aún. Sé el primero en comentar.</p>}
+            {comments.map(c => (
+              <div key={c.id} className="comment-card">
+                <div className="comment-header">
+                  <span className="comment-avatar">💬</span>
+                  <span className="comment-time">{formatDate(c.created_at)}</span>
+                  <button className="comment-delete" onClick={async () => {
+                    await supabase.from('comments').delete().eq('id', c.id);
+                    setComments(prev => prev.filter(x => x.id !== c.id));
+                  }}>×</button>
+                </div>
+                <p className="comment-text">{c.text}</p>
+              </div>
+            ))}
+            <div className="comment-input-row">
+              <input
+                className="comment-input"
+                placeholder="Escribe un comentario..."
+                value={commentDraft}
+                onChange={e => setCommentDraft(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && commentDraft.trim()) {
+                    setPostingComment(true);
+                    const session = (await supabase.auth.getSession()).data.session;
+                    if (!session) return;
+                    const { data } = await supabase.from('comments').insert({ note_id: id, user_id: session.user.id, text: commentDraft.trim() }).select().single();
+                    if (data) setComments(prev => [...prev, data as any]);
+                    setCommentDraft('');
+                    setPostingComment(false);
+                  }
+                }}
+                disabled={postingComment}
+              />
+              <button className="comment-send" disabled={!commentDraft.trim() || postingComment} onClick={async () => {
+                if (!commentDraft.trim()) return;
+                setPostingComment(true);
+                const session = (await supabase.auth.getSession()).data.session;
+                if (!session) return;
+                const { data } = await supabase.from('comments').insert({ note_id: id, user_id: session.user.id, text: commentDraft.trim() }).select().single();
+                if (data) setComments(prev => [...prev, data as any]);
+                setCommentDraft('');
+                setPostingComment(false);
+              }}>Enviar</button>
+            </div>
+          </div>
+        </div>
+
         {/* Transcript */}
         <div className="note-section">
           <h2>Transcripción completa</h2>
@@ -622,8 +826,18 @@ function NoteDetail() {
               {note.segments.map((seg, i) => {
                 const sp = note.speakers?.find(s => s.id === seg.speaker);
                 const name = sp?.custom_name ?? sp?.default_name ?? seg.speaker;
+                const isHighlighted = highlights.includes(i);
                 return (
-                  <div key={i} className="segment">
+                  <div key={i} className={`segment ${isHighlighted ? 'segment-highlighted' : ''}`}
+                    onClick={async () => {
+                      const newHL = isHighlighted ? highlights.filter(h => h !== i) : [...highlights, i];
+                      setHighlights(newHL);
+                      await supabase.from('notes').update({ highlights: newHL }).eq('id', id);
+                    }}
+                    title="Click para resaltar"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {isHighlighted && <span className="highlight-badge">★</span>}
                     <span className="segment-speaker">{name}</span>
                     <span className="segment-time">{formatTimestamp(seg.start)}</span>
                     <div className="segment-text">{seg.text}</div>
@@ -823,9 +1037,440 @@ function ModeResultView({ mode, result }: { mode: string; result: Record<string,
           {s(result.structured_version) && <div className="note-section"><h2>Versión estructurada</h2><div className="note-section-content" style={{whiteSpace:'pre-wrap'}}>{s(result.structured_version)}</div></div>}
         </>
       );
+    case 'outline':
+      return (
+        <div className="note-section">
+          <h2>Outline</h2>
+          {rArr(result.sections).map((section, sIdx) => (
+            <div key={sIdx} className="outline-section">
+              <div className="outline-heading">
+                <span className="outline-number">{sIdx + 1}</span>
+                <span className="outline-title">{s(section.heading)}</span>
+              </div>
+              {arr(section.points as unknown as string[]).length > 0 && (
+                <ul className="outline-points">
+                  {(Array.isArray(section.points) ? section.points as string[] : []).map((p, pIdx) => (
+                    <li key={pIdx}>{typeof p === 'string' ? p : ''}</li>
+                  ))}
+                </ul>
+              )}
+              {rArr(section.subsections).map((sub, subIdx) => (
+                <div key={subIdx} className="outline-subsection">
+                  <div className="outline-sub-heading">{s(sub.heading)}</div>
+                  <ul className="outline-points outline-sub-points">
+                    {(Array.isArray(sub.points) ? sub.points as string[] : []).map((sp, spIdx) => (
+                      <li key={spIdx}>{typeof sp === 'string' ? sp : ''}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      );
     default:
       return <div className="note-section"><div className="note-section-content"><pre style={{whiteSpace:'pre-wrap',fontSize:13}}>{JSON.stringify(result, null, 2)}</pre></div></div>;
   }
+}
+
+// ── Workspaces Page ─────────────────────────────────────────────────────
+
+function WorkspacesPage() {
+  const [workspaces, setWorkspaces] = useState<{id:string;name:string;description:string;owner_id:string;created_at:string}[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) return;
+      const { data: memberships } = await supabase.from('workspace_members').select('workspace_id').eq('user_id', session.user.id);
+      if (!memberships?.length) { setLoading(false); return; }
+      const ids = memberships.map(m => m.workspace_id);
+      const { data } = await supabase.from('workspaces').select('*').in('id', ids).order('created_at', { ascending: false });
+      setWorkspaces((data ?? []) as any[]);
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) return;
+    const { data } = await supabase.from('workspaces').insert({ name: name.trim(), description: desc.trim(), owner_id: session.user.id }).select().single();
+    if (data) {
+      await supabase.from('workspace_members').insert({ workspace_id: data.id, user_id: session.user.id, role: 'owner' });
+      setWorkspaces(prev => [data as any, ...prev]);
+      setShowCreate(false); setName(''); setDesc('');
+    }
+  };
+
+  if (loading) return <div className="container"><div className="loading"><div className="spinner" /></div></div>;
+
+  return (
+    <div className="container">
+      <div className="dashboard-header">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h1>👥 Workspaces</h1>
+            <p>Colabora con tu equipo en notas compartidas</p>
+          </div>
+          <button className="action-btn" style={{ background: 'var(--text)', color: '#fff' }} onClick={() => setShowCreate(true)}>+ Crear workspace</button>
+        </div>
+      </div>
+
+      <p style={{ marginBottom: 20 }}><Link to="/">← Volver al inicio</Link></p>
+
+      {workspaces.length === 0 ? (
+        <div className="empty">
+          <div className="empty-icon">👥</div>
+          <h3>Sin workspaces</h3>
+          <p>Crea un workspace para organizar tu equipo.</p>
+        </div>
+      ) : (
+        <div className="workspace-grid">
+          {workspaces.map(ws => (
+            <div key={ws.id} className="workspace-card">
+              <div className="workspace-icon">👥</div>
+              <div>
+                <h3>{ws.name}</h3>
+                {ws.description && <p>{ws.description}</p>}
+                <span className="workspace-date">{formatDate(ws.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create modal */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+            <h2>Nuevo workspace</h2>
+            <input className="auth-input" placeholder="Nombre del workspace" value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <input className="auth-input" placeholder="Descripción (opcional)" value={desc} onChange={e => setDesc(e.target.value)} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button className="action-btn" style={{ flex: 1 }} onClick={() => setShowCreate(false)}>Cancelar</button>
+              <button className="auth-btn" style={{ flex: 1, marginTop: 0 }} onClick={handleCreate} disabled={!name.trim()}>Crear</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Integrations Page ────────────────────────────────────────────────────
+
+function IntegrationsPage() {
+  const [slackUrl, setSlackUrl] = useState('');
+  const [slackSaved, setSlackSaved] = useState(false);
+  const [slackEnabled, setSlackEnabled] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) return;
+      // Load Slack integration
+      const { data: slack } = await supabase.from('integrations').select('config, enabled').eq('user_id', session.user.id).eq('provider', 'slack').single();
+      if (slack) {
+        setSlackUrl((slack.config as any)?.webhook_url || '');
+        setSlackEnabled(slack.enabled);
+        setSlackSaved(true);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleSaveSlack = async () => {
+    if (!slackUrl.startsWith('https://hooks.slack.com/')) { alert('URL debe empezar con https://hooks.slack.com/'); return; }
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) return;
+    await supabase.from('integrations').upsert({
+      user_id: session.user.id, provider: 'slack',
+      config: { webhook_url: slackUrl, notify_on: ['processing_complete'] }, enabled: true,
+    }, { onConflict: 'user_id,provider' });
+    setSlackSaved(true); setSlackEnabled(true);
+    alert('Slack conectado. Recibirás resúmenes de tus notas automáticamente.');
+  };
+
+  const handleGenerateApiKey = async () => {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) return;
+    const raw = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
+    const key = `sk_${raw}`;
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+    const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    await supabase.from('api_keys').insert({ user_id: session.user.id, key_hash: keyHash, name: 'Web Key', permissions: ['read', 'write'] });
+    setApiKey(key);
+  };
+
+  // Calendar sub-components
+  const [calConnected, setCalConnected] = useState(false);
+  const [calEvents, setCalEvents] = useState<{id:string;title:string;start:string;meet_link?:string;attendees:number}[]>([]);
+  const [calLoading, setCalLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) return;
+      const { data: cal } = await supabase.from('integrations').select('enabled').eq('user_id', session.user.id).eq('provider', 'google_calendar').single();
+      if (cal?.enabled) {
+        setCalConnected(true);
+        // Fetch events via direct fetch (invoke doesn't support query params)
+        setCalLoading(true);
+        try {
+          const token = session.access_token;
+          const res = await fetch(`https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/calendar-auth?action=events`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const d = await res.json();
+            setCalEvents(d.events || []);
+          }
+        } catch { /* ignore */ }
+        setCalLoading(false);
+      }
+    })();
+  }, []);
+
+  // Check URL for calendar_connected param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar_connected') === 'true') {
+      setCalConnected(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  function CalendarStatus() {
+    return <span className={`integration-status ${calConnected ? 'active' : ''}`}>{calConnected ? 'Conectado' : 'Disponible'}</span>;
+  }
+
+  function CalendarActions() {
+    if (calConnected) {
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ color: 'var(--success)', fontSize: 14 }}>✓ Google Calendar conectado</span>
+            <button className="action-btn" style={{ fontSize: 12, color: 'var(--error)' }} onClick={async () => {
+              const session = (await supabase.auth.getSession()).data.session;
+              if (!session) return;
+              await supabase.from('integrations').delete().eq('user_id', session.user.id).eq('provider', 'google_calendar');
+              setCalConnected(false);
+              setCalEvents([]);
+            }}>Desconectar</button>
+          </div>
+          {calEvents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {calEvents.map(e => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--surface)', borderRadius: 8, fontSize: 13 }}>
+                  <span>📅</span>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{e.title}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 12 }}>{new Date(e.start).toLocaleString('es-ES', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  {e.meet_link && <a href={e.meet_link} target="_blank" rel="noopener" style={{ fontSize: 12 }}>🔗 Meet</a>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <button className="action-btn" style={{ background: '#1a73e8', color: '#fff', borderColor: '#1a73e8' }} onClick={async () => {
+        const session = (await supabase.auth.getSession()).data.session;
+        if (!session) return;
+        const returnUrl = window.location.origin + '/integrations';
+        window.location.href = `${(window as any).__SUPABASE_URL || 'https://oewjbeqwihhzuvbsfctf.supabase.co'}/functions/v1/calendar-auth?action=authorize&user_id=${session.user.id}&return_url=${encodeURIComponent(returnUrl)}`;
+      }}>Conectar Google Calendar</button>
+    );
+  }
+
+  if (loading) return <div className="container"><div className="loading"><div className="spinner" /></div></div>;
+
+  return (
+    <div className="container">
+      <div className="dashboard-header">
+        <h1>⚡ Integraciones</h1>
+        <p>Conecta Sythio con tus herramientas</p>
+      </div>
+      <p style={{ marginBottom: 24 }}><Link to="/">← Volver al inicio</Link></p>
+
+      <div className="integrations-grid">
+        {/* Slack */}
+        <div className="integration-card">
+          <div className="integration-header">
+            <div className="integration-icon" style={{ background: '#4A154B' }}>💬</div>
+            <div>
+              <h3>Slack</h3>
+              <p>Recibe resúmenes automáticos de cada nota procesada directo en tu canal.</p>
+            </div>
+            {slackSaved && <span className={`integration-status ${slackEnabled ? 'active' : ''}`}>{slackEnabled ? 'Activo' : 'Pausado'}</span>}
+          </div>
+          <div className="integration-body">
+            {slackSaved && slackEnabled ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '10px 14px', background: 'rgba(52,199,89,0.08)', borderRadius: 10 }}>
+                  <span style={{ color: 'var(--success)' }}>✓</span>
+                  <span style={{ fontSize: 14, color: 'var(--success)', fontWeight: 500 }}>Conectado — cada nota procesada se envía a tu canal de Slack</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="auth-input" style={{ flex: 1, marginBottom: 0, fontSize: 12, color: 'var(--text3)' }} value={slackUrl} onChange={e => setSlackUrl(e.target.value)} />
+                  <button className="action-btn" onClick={handleSaveSlack}>Actualizar</button>
+                  <button className="action-btn" style={{ color: 'var(--error)' }} onClick={async () => {
+                    const session = (await supabase.auth.getSession()).data.session;
+                    if (!session) return;
+                    await supabase.from('integrations').delete().eq('user_id', session.user.id).eq('provider', 'slack');
+                    setSlackSaved(false); setSlackEnabled(false); setSlackUrl('');
+                  }}>Desconectar</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="setup-steps">
+                  <div className="setup-step">
+                    <span className="step-num">1</span>
+                    <div>
+                      <p>Abre <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">api.slack.com/apps</a> e inicia sesión en tu workspace</p>
+                    </div>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">2</span>
+                    <div>
+                      <p>Click <strong>"Create New App"</strong> → "From scratch" → Nombre: <strong>Sythio</strong> → selecciona tu workspace</p>
+                    </div>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">3</span>
+                    <div>
+                      <p>En el menú izquierdo: <strong>"Incoming Webhooks"</strong> → Activa el toggle → Click <strong>"Add New Webhook to Workspace"</strong></p>
+                    </div>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">4</span>
+                    <div>
+                      <p>Elige el canal donde quieres recibir los resúmenes → Click <strong>"Allow"</strong></p>
+                    </div>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">5</span>
+                    <div>
+                      <p>Copia la URL del webhook y pégala aquí abajo:</p>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <input className="auth-input" style={{ flex: 1, marginBottom: 0 }} placeholder="https://hooks.slack.com/services/T.../B.../xxx" value={slackUrl} onChange={e => setSlackUrl(e.target.value)} />
+                  <button className="action-btn" style={{ background: '#4A154B', color: '#fff', borderColor: '#4A154B' }} onClick={handleSaveSlack} disabled={!slackUrl.includes('hooks.slack.com')}>Conectar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Google Calendar */}
+        <div className="integration-card">
+          <div className="integration-header">
+            <div className="integration-icon" style={{ background: '#1a73e8' }}>📅</div>
+            <div>
+              <h3>Google Calendar</h3>
+              <p>Sincroniza tus reuniones. Ve tus próximos eventos con links de videollamada.</p>
+            </div>
+            <CalendarStatus />
+          </div>
+          <div className="integration-body">
+            <CalendarActions />
+          </div>
+        </div>
+
+        {/* API Key */}
+        <div className="integration-card">
+          <div className="integration-header">
+            <div className="integration-icon" style={{ background: 'var(--text)' }}>🔑</div>
+            <div>
+              <h3>API Pública</h3>
+              <p>Accede a tus notas desde cualquier herramienta o script.</p>
+            </div>
+          </div>
+          <div className="integration-body">
+            {apiKey ? (
+              <div>
+                <div style={{ padding: '12px 14px', background: 'rgba(245,158,11,0.08)', borderRadius: 10, marginBottom: 12 }}>
+                  <p style={{ fontSize: 13, color: 'var(--warning)', fontWeight: 600, marginBottom: 4 }}>Guarda tu API Key — no se mostrará de nuevo</p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="auth-input" style={{ flex: 1, marginBottom: 0, fontFamily: 'monospace', fontSize: 12 }} value={apiKey} readOnly onClick={e => (e.target as HTMLInputElement).select()} />
+                    <button className="action-btn" onClick={() => { navigator.clipboard.writeText(apiKey); alert('API key copiada'); }}>Copiar</button>
+                  </div>
+                </div>
+                <div className="setup-steps">
+                  <div className="setup-step">
+                    <span className="step-num">→</span>
+                    <p>Listar notas: <code>GET /functions/v1/public-api?action=list_notes</code></p>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">→</span>
+                    <p>Ver nota: <code>GET /functions/v1/public-api?action=get_note&id=UUID</code></p>
+                  </div>
+                  <div className="setup-step">
+                    <span className="step-num">→</span>
+                    <p>Transcripción: <code>GET /functions/v1/public-api?action=get_transcript&id=UUID</code></p>
+                  </div>
+                </div>
+                <p className="integration-hint" style={{ marginTop: 12 }}>Header: <code>Authorization: Bearer {apiKey.slice(0, 12)}...</code></p>
+              </div>
+            ) : (
+              <div>
+                <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 12 }}>Genera una API key para integrar tus notas con herramientas externas, scripts o automatizaciones.</p>
+                <button className="action-btn" style={{ background: 'var(--text)', color: '#fff' }} onClick={handleGenerateApiKey}>Generar API Key</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* MCP Server */}
+        <div className="integration-card">
+          <div className="integration-header">
+            <div className="integration-icon" style={{ background: '#D97706' }}>🤖</div>
+            <div>
+              <h3>MCP Server</h3>
+              <p>Conecta tus notas con Claude Desktop, ChatGPT o Cursor vía IA.</p>
+            </div>
+          </div>
+          <div className="integration-body">
+            <div className="setup-steps">
+              <div className="setup-step">
+                <span className="step-num">1</span>
+                <p>Primero genera una API Key arriba si aún no tienes una</p>
+              </div>
+              <div className="setup-step">
+                <span className="step-num">2</span>
+                <p>Instala el servidor: <code>npm install -g sythio-mcp</code></p>
+              </div>
+              <div className="setup-step">
+                <span className="step-num">3</span>
+                <div>
+                  <p>Agrega esto a la configuración de tu asistente de IA:</p>
+                  <pre className="code-block">{JSON.stringify({ mcpServers: { sythio: { command: "sythio-mcp", env: { SYTHIO_API_KEY: apiKey || "sk_TU_API_KEY" } } } }, null, 2)}</pre>
+                </div>
+              </div>
+              <div className="setup-step">
+                <span className="step-num">4</span>
+                <div>
+                  <p><strong>Para Claude Desktop:</strong> Archivo → Settings → Developer → Edit config</p>
+                  <p><strong>Para Cursor:</strong> Settings → MCP → Add server</p>
+                </div>
+              </div>
+            </div>
+            <p className="integration-hint" style={{ marginTop: 12 }}>Una vez conectado, puedes pedirle a tu IA: "busca en mis notas de Sythio sobre el proyecto X" o "dame el resumen de mi última reunión"</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Root App ─────────────────────────────────────────────────────────────────
@@ -857,6 +1502,8 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/note/:id" element={<NoteDetail />} />
                 <Route path="/trash" element={<TrashPage />} />
+                <Route path="/workspaces" element={<WorkspacesPage />} />
+                <Route path="/integrations" element={<IntegrationsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>

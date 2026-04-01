@@ -1,31 +1,39 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Slot, useRouter, useSegments } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import * as SplashScreen from 'expo-splash-screen';
-import * as Linking from 'expo-linking';
-import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore } from '@/stores/authStore';
-import { useThemeStore } from '@/stores/themeStore';
-import { useIsDark } from '@/lib/constants';
-import { supabase } from '@/lib/supabase';
-import { configurePurchases, identifyUser, checkSubscriptionStatus, onCustomerInfoUpdated } from '@/lib/purchases';
-import { registerForPushNotifications } from '@/lib/notifications';
-import ToastProvider from '@/components/Toast';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import SplashLoader from '@/components/SplashLoader';
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import ToastProvider from "@/components/Toast";
+import { useIsDark } from "@/lib/constants";
+import { registerForPushNotifications } from "@/lib/notifications";
+import {
+  checkSubscriptionStatus,
+  configurePurchases,
+  identifyUser,
+  onCustomerInfoUpdated,
+} from "@/lib/purchases";
+import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/stores/authStore";
+import { useThemeStore } from "@/stores/themeStore";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} from "@expo-google-fonts/inter";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
+import { Slot, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen"; /*  */
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import { StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-const ONBOARDING_KEY = 'sythio_onboarding_done';
-const WELCOME_KEY = 'sythio_welcome_done';
+const ONBOARDING_KEY = "sythio_onboarding_done";
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { session, loading, initialize } = useAuthStore();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
-  const [welcomeDone, setWelcomeDone] = useState<boolean | null>(null);
   const router = useRouter();
   const segments = useSegments();
 
@@ -56,7 +64,7 @@ export default function RootLayout() {
 
     // Listen for entitlement changes (renewal, expiry, etc.)
     const unsubPurchases = onCustomerInfoUpdated((isPremium) => {
-      useAuthStore.getState().setPlan(isPremium ? 'premium' : 'free');
+      useAuthStore.getState().setPlan(isPremium ? "premium" : "free");
     });
 
     // Register for push notifications (non-blocking, after auth)
@@ -65,43 +73,31 @@ export default function RootLayout() {
       registerForPushNotifications(currentUserId).catch(() => {});
     }
 
-    Promise.all([
-      AsyncStorage.getItem(ONBOARDING_KEY),
-      AsyncStorage.getItem(WELCOME_KEY),
-    ]).then(([obVal, wcVal]) => {
-      setOnboardingDone(obVal === 'true');
-      setWelcomeDone(wcVal === 'true');
-      if (__DEV__) console.log('[layout] onboarding:', obVal === 'true', 'welcome:', wcVal === 'true');
+    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+      const done = val === "true";
+      if (__DEV__) console.log("[layout] onboarding flag:", done);
+      setOnboardingDone(done);
     });
 
-    return () => { unsubPurchases(); };
+    return () => {
+      unsubPurchases();
+    };
   }, [initialize]);
-
-  // 1a. Re-read flags when session changes (covers dev-reset + logout)
-  useEffect(() => {
-    if (loading) return;
-    Promise.all([
-      AsyncStorage.getItem(ONBOARDING_KEY),
-      AsyncStorage.getItem(WELCOME_KEY),
-    ]).then(([obVal, wcVal]) => {
-      setOnboardingDone(obVal === 'true');
-      setWelcomeDone(wcVal === 'true');
-    });
-  }, [session, loading]);
 
   // 1b. Handle deep links for auth (email confirmation, password reset)
   useEffect(() => {
     const handleAuthDeepLink = async (url: string) => {
-      if (!url.includes('auth-callback')) return;
+      if (!url.includes("auth-callback")) return;
 
       // Try hash fragment (implicit flow): ...#access_token=x&refresh_token=y
-      const hash = url.split('#')[1];
+      const hash = url.split("#")[1];
       if (hash) {
         const params = new URLSearchParams(hash);
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
         if (access_token && refresh_token) {
-          if (__DEV__) console.log('[auth] Setting session from deep link (implicit)');
+          if (__DEV__)
+            console.log("[auth] Setting session from deep link (implicit)");
           await supabase.auth.setSession({ access_token, refresh_token });
           return;
         }
@@ -110,7 +106,8 @@ export default function RootLayout() {
       // Try code parameter (PKCE flow): ...?code=x
       const codeMatch = url.match(/[?&]code=([^&#]+)/);
       if (codeMatch) {
-        if (__DEV__) console.log('[auth] Exchanging code from deep link (PKCE)');
+        if (__DEV__)
+          console.log("[auth] Exchanging code from deep link (PKCE)");
         await supabase.auth.exchangeCodeForSession(codeMatch[1]);
       }
     };
@@ -121,7 +118,7 @@ export default function RootLayout() {
     });
 
     // Handle URL while app is already open (warm start)
-    const subscription = Linking.addEventListener('url', (event) => {
+    const subscription = Linking.addEventListener("url", (event) => {
       handleAuthDeepLink(event.url);
     });
 
@@ -130,14 +127,14 @@ export default function RootLayout() {
 
   // 2. Hide splash once both are ready
   useEffect(() => {
-    if (!loading && onboardingDone !== null && welcomeDone !== null && fontsLoaded) {
+    if (!loading && onboardingDone !== null && fontsLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [loading, onboardingDone, welcomeDone, fontsLoaded]);
+  }, [loading, onboardingDone, fontsLoaded]);
 
   // 3. Navigation guard
   useEffect(() => {
-    if (loading || onboardingDone === null || welcomeDone === null) return;
+    if (loading || onboardingDone === null) return;
 
     const navigate = async () => {
       let done = onboardingDone;
@@ -145,67 +142,52 @@ export default function RootLayout() {
       // Re-verify from storage to avoid stale state after onboarding completes
       if (!done) {
         const val = await AsyncStorage.getItem(ONBOARDING_KEY);
-        if (val === 'true') {
+        if (val === "true") {
           setOnboardingDone(true);
           return; // Will re-trigger with updated state
         }
       }
 
-      const inAuthGroup = segments[0] === '(auth)';
-      const inTabsGroup = segments[0] === '(tabs)';
+      const inAuthGroup = segments[0] === "(auth)";
+      const inTabsGroup = segments[0] === "(tabs)";
 
       if (__DEV__) {
-        console.log('[layout] session:', !!session, 'onboarding:', done, 'segments:', segments);
+        console.log(
+          "[layout] session:",
+          !!session,
+          "onboarding:",
+          done,
+          "segments:",
+          segments,
+        );
       }
 
       if (!done) {
-        if (segments[1] !== 'onboarding') {
-          router.replace('/(auth)/onboarding');
+        if (segments[1] !== "onboarding") {
+          router.replace("/(auth)/onboarding");
         }
       } else if (!session) {
-        if (!inAuthGroup || segments[1] === 'onboarding') {
-          router.replace('/(auth)/login');
+        if (!inAuthGroup || segments[1] === "onboarding") {
+          router.replace("/(auth)/login");
         }
       } else {
-        // Re-verify welcome flag from storage (could have been set by welcome screen)
-        let wcDone = welcomeDone;
-        if (!wcDone) {
-          const wcVal = await AsyncStorage.getItem(WELCOME_KEY);
-          if (wcVal === 'true') {
-            setWelcomeDone(true);
-            return; // Will re-trigger with updated state
-          }
-        }
-        if (!wcDone && segments[1] !== 'welcome') {
-          router.replace('/(auth)/welcome');
-        } else if (wcDone && !inTabsGroup) {
-          router.replace('/(tabs)');
+        if (!inTabsGroup) {
+          router.replace("/(tabs)");
         }
       }
     };
 
     navigate();
-  }, [session, loading, onboardingDone, welcomeDone, segments, router]);
+  }, [session, loading, onboardingDone, segments, router]);
 
-  // Show splash until route matches expected navigation state (synchronous — no race)
-  const routeReady = (() => {
-    if (loading || onboardingDone === null || welcomeDone === null || !fontsLoaded) return false;
-    const inAuthGroup = segments[0] === '(auth)';
-    const inTabsGroup = segments[0] === '(tabs)';
-    if (!onboardingDone) return segments[1] === 'onboarding';
-    if (!session) return inAuthGroup && segments[1] !== 'onboarding';
-    if (!welcomeDone) return segments[1] === 'welcome';
-    return inTabsGroup;
-  })();
-
-  if (!routeReady) {
-    return <SplashLoader />;
+  if (loading || onboardingDone === null || !fontsLoaded) {
+    return null;
   }
 
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={styles.root}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <StatusBar style={isDark ? "light" : "dark"} />
         <Slot />
         <ToastProvider />
       </GestureHandlerRootView>

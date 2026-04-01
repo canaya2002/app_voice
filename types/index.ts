@@ -24,7 +24,8 @@ export type OutputMode =
   | 'executive_report'
   | 'ready_message'
   | 'study'
-  | 'ideas';
+  | 'ideas'
+  | 'outline';
 
 export type MessageTone = 'professional' | 'friendly' | 'firm' | 'brief';
 
@@ -96,6 +97,10 @@ export interface Note {
   deleted_at?: string | null;
   folder_id?: string | null;
   share_token?: string | null;
+  // v4 fields
+  highlights?: number[];  // indexes of highlighted segments
+  workspace_id?: string | null;
+  images?: string[];  // storage paths to attached images
 }
 
 // ── Mode Results ──────────────────────────────────────────────────────────────
@@ -107,6 +112,77 @@ export interface ModeResult {
   result: Record<string, unknown>;
   tone?: MessageTone;
   created_at: string;
+}
+
+// ── Comments ─────────────────────────────────────────────────────────────────
+
+export interface Comment {
+  id: string;
+  note_id: string;
+  user_id: string;
+  text: string;
+  segment_index?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Workspaces ───────────────────────────────────────────────────────────────
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  role: WorkspaceRole;
+  invited_by?: string;
+  joined_at: string;
+  // Joined from profile
+  email?: string;
+  display_name?: string;
+}
+
+// ── Channels ─────────────────────────────────────────────────────────────────
+
+export interface Channel {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string;
+  is_public: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChannelNote {
+  id: string;
+  channel_id: string;
+  note_id: string;
+  shared_by: string;
+  shared_at: string;
+}
+
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+export interface ApiKey {
+  id: string;
+  user_id: string;
+  name: string;
+  permissions: string[];
+  last_used?: string;
+  created_at: string;
+  revoked_at?: string;
 }
 
 // ── Legacy (kept for backward compat) ─────────────────────────────────────────

@@ -1,4 +1,5 @@
 import React, { useState, useEffect as useEffectHook } from 'react';
+import { router } from 'expo-router';
 import {
   View,
   Text,
@@ -8,10 +9,10 @@ import {
   Alert,
   ScrollView,
   Modal,
-  Linking,
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedProps, withTiming, Easing } from 'react-native-reanimated';
@@ -103,6 +104,9 @@ export default function ProfileScreen() {
   const [exporting, setExporting] = useState(false);
   const [vocabInput, setVocabInput] = useState('');
   const [savingVocab, setSavingVocab] = useState(false);
+  const [showSlackModal, setShowSlackModal] = useState(false);
+  const [slackUrl, setSlackUrl] = useState('');
+  const [savingSlack, setSavingSlack] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaQr, setMfaQr] = useState<string | null>(null);
@@ -572,10 +576,38 @@ export default function ProfileScreen() {
           )}
         </Animated.View>
 
+        {/* Integrations section */}
+        <Animated.View entering={cardEntry(7)} style={[styles.accountCard, { borderColor: colors.border }]}>
+          <Text style={[styles.accountTitle, { color: colors.textPrimary }]}>Integraciones</Text>
+
+          <AccountRow
+            icon="logo-slack"
+            label="Slack"
+            color="#4A154B"
+            onPress={() => setShowSlackModal(true)}
+          />
+          <AccountRow
+            icon="calendar-outline"
+            label="Google Calendar"
+            color={COLORS.accentTeal}
+            onPress={async () => {
+              const returnUrl = Linking.createURL('/(tabs)/profile');
+              const authUrl = `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/calendar-auth?action=authorize&user_id=${user!.id}&return_url=${encodeURIComponent(returnUrl)}`;
+              await Linking.openURL(authUrl);
+            }}
+          />
+        </Animated.View>
+
         {/* Account section */}
         <Animated.View entering={cardEntry(8)} style={[styles.accountCard, { borderColor: colors.border }]}>
           <Text style={[styles.accountTitle, { color: colors.textPrimary }]}>Cuenta</Text>
 
+          <AccountRow
+            icon="people-outline"
+            label="Workspaces"
+            color={colors.textPrimary}
+            onPress={() => router.push('/workspace' as any)}
+          />
           <AccountRow
             icon="shield-checkmark-outline"
             label="Privacidad y datos"
@@ -594,6 +626,36 @@ export default function ProfileScreen() {
             color={colors.textPrimary}
             onPress={handleExportData}
             disabled={exporting}
+          />
+          <AccountRow
+            icon="key-outline"
+            label="API Key"
+            color={colors.textPrimary}
+            onPress={async () => {
+              // Generate a new API key
+              const raw = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+              const apiKey = `sk_${raw}`;
+              // Hash it
+              const encoder = new TextEncoder();
+              const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(apiKey));
+              const keyHash = Array.from(new Uint8Array(hashBuffer))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+              const { error } = await supabase.from('api_keys').insert({
+                user_id: user!.id,
+                key_hash: keyHash,
+                name: 'API Key',
+                permissions: ['read', 'write'],
+              });
+              if (error) {
+                showToast('Error al generar API key', 'error');
+              } else {
+                await Clipboard.setStringAsync(apiKey);
+                hapticCopyClipboard();
+                Alert.alert('API Key generada', 'Tu API key ha sido copiada al portapapeles. Guárdala en un lugar seguro, no se puede recuperar.');
+                track('api_key_generated');
+              }
+            }}
           />
 
           <View style={[styles.accountSeparator, { backgroundColor: colors.border }]} />
@@ -686,6 +748,67 @@ export default function ProfileScreen() {
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
                   <Text style={styles.modalBtnDeleteText}>Eliminar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Slack modal */}
+      <Modal visible={showSlackModal} transparent animationType="fade" onRequestClose={() => setShowSlackModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Conectar Slack</Text>
+            <Text style={[styles.modalDesc, { color: colors.textSecondary }]}>
+              Pega la URL del Incoming Webhook de tu workspace de Slack.{'\n\n'}
+              Créalo en api.slack.com/apps → tu app → Incoming Webhooks → Add New Webhook
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              placeholder="https://hooks.slack.com/services/..."
+              placeholderTextColor={colors.textMuted}
+              value={slackUrl}
+              onChangeText={setSlackUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel, { borderColor: colors.border }]}
+                onPress={() => { setShowSlackModal(false); setSlackUrl(''); }}
+                disabled={savingSlack}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#4A154B' }, !slackUrl.startsWith('https://hooks.slack.com/') && styles.modalBtnDisabled]}
+                onPress={async () => {
+                  if (!slackUrl.startsWith('https://hooks.slack.com/')) {
+                    showToast('URL inválida', 'error');
+                    return;
+                  }
+                  setSavingSlack(true);
+                  const { error } = await supabase.from('integrations').upsert({
+                    user_id: user!.id,
+                    provider: 'slack',
+                    config: { webhook_url: slackUrl, notify_on: ['processing_complete'] },
+                    enabled: true,
+                  }, { onConflict: 'user_id,provider' });
+                  setSavingSlack(false);
+                  if (error) { showToast('Error al guardar', 'error'); return; }
+                  showToast('Slack conectado', 'success');
+                  setShowSlackModal(false);
+                  setSlackUrl('');
+                }}
+                disabled={!slackUrl.startsWith('https://hooks.slack.com/') || savingSlack}
+              >
+                {savingSlack ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.modalBtnDeleteText}>Conectar</Text>
                 )}
               </TouchableOpacity>
             </View>

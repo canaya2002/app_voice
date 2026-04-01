@@ -34,7 +34,10 @@ import { hapticButtonPress } from '@/lib/haptics';
 import { showToast } from '@/components/Toast';
 import { track, trackModeView, trackModeGenerated } from '@/lib/analytics';
 import Paywall from '@/components/Paywall';
-import type { OutputMode, SpeakerInfo, ModeResult, Folder } from '@/types';
+import NoteComments from '@/components/NoteComments';
+import NoteImages from '@/components/NoteImages';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import type { OutputMode, SpeakerInfo, ModeResult, Folder, Channel } from '@/types';
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,9 +56,12 @@ export default function NoteDetailScreen() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const { user } = useAuthStore();
   const { folders, fetchFolders, moveNoteToFolder } = useNotesStore();
+  const { workspaces, channels, fetchWorkspaces, fetchChannels, shareNoteToChannel } = useWorkspaceStore();
   const colors = useThemeColors();
 
   useEffect(() => {
@@ -63,6 +69,7 @@ export default function NoteDetailScreen() {
       fetchNote(id);
       fetchModeResults(id);
       fetchFolders();
+      fetchWorkspaces();
       const unsub = subscribeToNote(id);
       return unsub;
     }
@@ -118,6 +125,30 @@ export default function NoteDetailScreen() {
     track('speaker_renamed', { note_id: id });
     showToast('Hablantes actualizados', 'success');
   }, [id, updateSpeakers]);
+
+  const handleEditSegment = useCallback(async (segIndex: number, newText: string) => {
+    if (!id || !currentNote) return;
+    const updatedSegments = currentNote.segments.map((seg, i) =>
+      i === segIndex ? { ...seg, text: newText } : seg,
+    );
+    // Also update the full transcript
+    const updatedTranscript = updatedSegments.map((s) => s.text).join(' ');
+    await useNotesStore.getState().updateNote(id, {
+      segments: updatedSegments,
+      transcript: updatedTranscript,
+    });
+    showToast('Segmento actualizado', 'success');
+  }, [id, currentNote]);
+
+  const handleToggleHighlight = useCallback(async (segIndex: number) => {
+    if (!id || !currentNote) return;
+    const current = currentNote.highlights ?? [];
+    const updated = current.includes(segIndex)
+      ? current.filter((i) => i !== segIndex)
+      : [...current, segIndex];
+    await useNotesStore.getState().updateNote(id, { highlights: updated });
+    track('segment_highlighted', { note_id: id, segment_index: segIndex });
+  }, [id, currentNote]);
 
   if (loading && !currentNote) {
     return (
@@ -342,13 +373,40 @@ export default function NoteDetailScreen() {
             </Text>
           </AnimatedPressable>
 
+          {/* Images */}
+          <NoteImages noteId={id!} images={currentNote.images ?? []} />
+
+          {/* Comments toggle */}
+          <AnimatedPressable
+            onPress={() => setShowComments(!showComments)}
+            style={styles.transcriptToggle}
+          >
+            <Ionicons
+              name={showComments ? 'chatbubble' : 'chatbubble-outline'}
+              size={16}
+              color={COLORS.primary}
+            />
+            <Text style={styles.transcriptToggleText}>
+              {showComments ? 'Ocultar comentarios' : 'Comentarios'}
+            </Text>
+          </AnimatedPressable>
+
+          {showComments && (
+            <RNAnimated.View entering={FadeInUp.springify()}>
+              <NoteComments noteId={id!} />
+            </RNAnimated.View>
+          )}
+
           {showTranscript && (
             <RNAnimated.View entering={FadeInUp.springify()}>
               {currentNote.is_conversation && currentNote.segments.length > 0 ? (
                 <SpeakerTranscript
                   segments={currentNote.segments}
                   speakers={currentNote.speakers}
+                  highlights={currentNote.highlights ?? []}
                   onRenameSpeaker={() => setShowRenameModal(true)}
+                  onEditSegment={handleEditSegment}
+                  onToggleHighlight={handleToggleHighlight}
                 />
               ) : editingTranscript ? (
                 <View style={styles.plainTranscript}>
@@ -397,11 +455,31 @@ export default function NoteDetailScreen() {
       )}
 
       {isDone && (
-        <ExportButton
-          note={currentNote}
-          activeMode={selectedMode ?? currentNote.primary_mode}
-          activeModeResult={displayResult as Record<string, unknown> | undefined}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8, gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <ExportButton
+              note={currentNote}
+              activeMode={selectedMode ?? currentNote.primary_mode}
+              activeModeResult={displayResult as Record<string, unknown> | undefined}
+            />
+          </View>
+          {workspaces.length > 0 && (
+            <AnimatedPressable
+              onPress={() => {
+                // Load channels for all workspaces
+                workspaces.forEach(ws => fetchChannels(ws.id));
+                setShowChannelPicker(true);
+              }}
+              style={{
+                width: 44, height: 44, borderRadius: 22,
+                backgroundColor: COLORS.primaryPale,
+                justifyContent: 'center', alignItems: 'center',
+              }}
+            >
+              <Ionicons name="share-social-outline" size={20} color={COLORS.primaryLight} />
+            </AnimatedPressable>
+          )}
+        </View>
       )}
 
       <SpeakerRenameModal
@@ -411,6 +489,54 @@ export default function NoteDetailScreen() {
         onClose={() => setShowRenameModal(false)}
       />
       <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} trigger="mode_gate" />
+
+      {/* Channel picker modal */}
+      {showChannelPicker && (
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+            activeOpacity={1}
+            onPress={() => setShowChannelPicker(false)}
+          >
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 16, textAlign: 'center' }}>Compartir a canal</Text>
+              {workspaces.length === 0 ? (
+                <Text style={{ fontSize: 14, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 20 }}>
+                  No tienes workspaces. Crea uno desde tu perfil.
+                </Text>
+              ) : (
+                <>
+                  {workspaces.map((ws) => (
+                    <View key={ws.id} style={{ marginBottom: 12 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{ws.name}</Text>
+                      {channels.filter(c => c.workspace_id === ws.id).length === 0 ? (
+                        <Text style={{ fontSize: 13, color: COLORS.textMuted, paddingVertical: 4 }}>Sin canales</Text>
+                      ) : (
+                        channels.filter(c => c.workspace_id === ws.id).map((ch) => (
+                          <TouchableOpacity
+                            key={ch.id}
+                            onPress={async () => {
+                              const ok = await shareNoteToChannel(ch.id, id!);
+                              setShowChannelPicker(false);
+                              if (ok) showToast(`Compartida en #${ch.name}`, 'success');
+                              else showToast('Ya está compartida en ese canal', 'info');
+                            }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight }}
+                          >
+                            <Ionicons name="chatbubble-outline" size={16} color={COLORS.primaryLight} />
+                            <Text style={{ fontSize: 15, color: COLORS.textPrimary, fontWeight: '500' }}>#{ch.name}</Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </View>
+                  ))}
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Folder Picker Modal */}
       {showFolderPicker && (

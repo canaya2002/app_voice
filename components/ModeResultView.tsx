@@ -376,6 +376,18 @@ function buildModeTextForCopy(mode: OutputMode, result: Record<string, unknown>)
       if (asString(result.suggested_next_step)) lines.push('', `Siguiente paso: ${asString(result.suggested_next_step)}`);
       break;
     }
+    case 'outline': {
+      asRecordArray(result.sections).forEach((section) => {
+        lines.push(`## ${asString(section.heading)}`);
+        asStringArray(section.points).forEach((p) => lines.push(`  • ${p}`));
+        asRecordArray(section.subsections).forEach((sub) => {
+          lines.push(`  ### ${asString(sub.heading)}`);
+          asStringArray(sub.points).forEach((p) => lines.push(`    • ${p}`));
+        });
+        lines.push('');
+      });
+      break;
+    }
     default:
       lines.push(JSON.stringify(result, null, 2));
   }
@@ -1071,6 +1083,84 @@ function IdeasView({ result }: { result: Record<string, unknown> }) {
   );
 }
 
+function OutlineView({ result }: { result: Record<string, unknown> }) {
+  const sections = asRecordArray(result.sections);
+  const totalSections = typeof result.total_sections === 'number' ? result.total_sections : sections.length;
+  const totalPoints = typeof result.total_points === 'number' ? result.total_points : 0;
+
+  return (
+    <View style={styles.modeContainer}>
+      {/* Stats */}
+      {(totalSections > 0 || totalPoints > 0) && (
+        <View style={styles.outlineStats}>
+          {totalSections > 0 && (
+            <View style={styles.outlineStatChip}>
+              <Ionicons name="layers-outline" size={12} color={COLORS.primary} />
+              <Text style={styles.outlineStatText}>{totalSections} secciones</Text>
+            </View>
+          )}
+          {totalPoints > 0 && (
+            <View style={styles.outlineStatChip}>
+              <Ionicons name="list-outline" size={12} color={COLORS.primary} />
+              <Text style={styles.outlineStatText}>{totalPoints} puntos</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Sections */}
+      {sections.map((section, sIdx) => {
+        const heading = asString(section.heading);
+        const points = asStringArray(section.points);
+        const subsections = asRecordArray(section.subsections);
+
+        return (
+          <Card key={sIdx}>
+            <View style={styles.outlineSectionHeader}>
+              <View style={styles.outlineSectionNumber}>
+                <Text style={styles.outlineSectionNumberText}>{sIdx + 1}</Text>
+              </View>
+              <Text style={styles.outlineSectionTitle}>{heading}</Text>
+            </View>
+
+            {points.length > 0 && (
+              <View style={styles.outlinePoints}>
+                {points.map((p, pIdx) => (
+                  <View key={pIdx} style={styles.outlinePointRow}>
+                    <View style={styles.outlinePointDot} />
+                    <Text style={styles.outlinePointText}>{p}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {subsections.map((sub, subIdx) => {
+              const subHeading = asString(sub.heading);
+              const subPoints = asStringArray(sub.points);
+              return (
+                <View key={subIdx} style={styles.outlineSubsection}>
+                  <View style={styles.outlineSubHeader}>
+                    <View style={styles.outlineSubDot} />
+                    <Text style={styles.outlineSubTitle}>{subHeading}</Text>
+                  </View>
+                  {subPoints.map((sp, spIdx) => (
+                    <View key={spIdx} style={styles.outlineSubPointRow}>
+                      <Text style={styles.outlineSubPointDash}>–</Text>
+                      <Text style={styles.outlineSubPointText}>{sp}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </Card>
+        );
+      })}
+
+      <CopyResultFooter mode="outline" result={result} />
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -1093,6 +1183,8 @@ export default function ModeResultView({ mode, result, noteId }: ModeResultViewP
       return <StudyView result={result} />;
     case 'ideas':
       return <IdeasView result={result} />;
+    case 'outline':
+      return <OutlineView result={result} />;
     default: {
       // Unknown mode — render raw JSON safely
       const _exhaustive: never = mode;
@@ -1621,5 +1713,115 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.success,
+  },
+
+  // -- Outline --
+  outlineStats: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  outlineStatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.surfaceAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  outlineStatText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  outlineSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  outlineSectionNumber: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  outlineSectionNumberText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  outlineSectionTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  outlinePoints: {
+    gap: 6,
+    marginLeft: 36,
+  },
+  outlinePointRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  outlinePointDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.primaryLight,
+    marginTop: 7,
+  },
+  outlinePointText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 22,
+    color: COLORS.textSecondary,
+  },
+  outlineSubsection: {
+    marginLeft: 36,
+    marginTop: 10,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.borderLight,
+  },
+  outlineSubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  outlineSubDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.textMuted,
+  },
+  outlineSubTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  outlineSubPointRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginLeft: 10,
+    marginTop: 3,
+  },
+  outlineSubPointDash: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+  },
+  outlineSubPointText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+    color: COLORS.textSecondary,
   },
 });

@@ -13,7 +13,7 @@ const API_TIMEOUT_MS = 120_000;
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
 // ── Free-tier mode allowlist (must match client lib/constants.ts FREE_MODES) ──
-const FREE_MODES = ["summary", "tasks", "clean_text", "ideas"];
+const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
 const DAILY_LIMITS = { free: 2, premium: 50 };
@@ -31,6 +31,7 @@ const MODE_MAX_TOKENS: Record<string, number> = {
   ready_message: 700,
   study: 1400,
   ideas: 1100,
+  outline: 1400,
 };
 
 const CHART_HINT = `\nIf the result contains countable categories (e.g. priority distribution, effort levels, types), include "charts":[{"type":"bar","title":"Chart title","data":[{"label":"Category","value":count,"color":"#hex"}]}] (max 2 charts). Colors: #EF4444=high/urgent, #F59E0B=medium/warning, #22C55E=low/success, #3B82F6=info. Omit "charts" if nothing quantifiable.`;
@@ -411,6 +412,7 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
       ready_message: `Generate ready-to-send messages. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
       study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}${CHART_HINT}`,
       ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}${CHART_HINT}`,
+      outline: `Generate a hierarchical outline. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","sections":[{"heading":"section title","points":["point"],"subsections":[{"heading":"subsection","points":["detail"]}]}],"duration_covered":"total duration","total_sections":0,"total_points":0}`,
     };
 
     const claudeCtrl2 = new AbortController();
@@ -461,15 +463,12 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
       await admin.from("profiles").update({ daily_audio_minutes: dailyAudioMinutes + audioDurationMin }).eq("id", user.id);
     }
 
-    // ── 10. Push notification (if user has token) ──
-    // TODO: Uncomment when ready
-    // const { data: pushProfile } = await admin.from("profiles").select("push_token").eq("id", user.id).single();
-    // if (pushProfile?.push_token) {
-    //   await fetch("https://exp.host/--/api/v2/push/send", {
-    //     method: "POST", headers: { "Content-Type": "application/json" },
-    //     body: JSON.stringify({ to: pushProfile.push_token, title: "Tu nota está lista", body: autoTitle, data: { noteId: note_id }, sound: "default" }),
-    //   }).catch(() => {});
-    // }
+    // ── 10. Slack notification (fire-and-forget) ──
+    fetch(`${SUPABASE_URL}/functions/v1/notify-slack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` },
+      body: JSON.stringify({ user_id: user.id, note_id }),
+    }).catch(() => {});
 
     return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (_error) {

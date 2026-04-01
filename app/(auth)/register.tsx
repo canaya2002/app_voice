@@ -21,10 +21,13 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { COLORS } from '@/lib/constants';
 import { shadows } from '@/lib/styles';
 import { validateEmail, validatePassword } from '@/lib/validation';
 import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/lib/supabase';
+import { showToast } from '@/components/Toast';
 import FloatingOrb from '@/components/FloatingOrb';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
@@ -211,6 +214,47 @@ export default function RegisterScreen() {
             </LinearGradient>
           </AnimatedPressable>
 
+          {/* Social login */}
+          <Animated.View entering={FadeIn.delay(750)} style={styles.socialSection}>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>o regístrate con</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <View style={styles.socialRow}>
+              <TouchableOpacity
+                style={styles.socialBtn}
+                activeOpacity={0.7}
+                onPress={async () => {
+                  const redirectUrl = Linking.createURL('/(tabs)');
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: { redirectTo: redirectUrl },
+                  });
+                  if (error) showToast('Error con Google: ' + error.message, 'error');
+                }}
+              >
+                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                <Text style={styles.socialBtnText}>Google</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.socialBtn}
+                activeOpacity={0.7}
+                onPress={async () => {
+                  const redirectUrl = Linking.createURL('/(tabs)');
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'apple',
+                    options: { redirectTo: redirectUrl },
+                  });
+                  if (error) showToast('Error con Apple: ' + error.message, 'error');
+                }}
+              >
+                <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
+                <Text style={styles.socialBtnText}>Apple</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+
           {/* Link */}
           <Animated.View entering={FadeIn.delay(800)}>
             <TouchableOpacity
@@ -323,5 +367,45 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 8,
     paddingHorizontal: 8,
+  },
+  // Social login
+  socialSection: {
+    marginTop: 24,
+    gap: 16,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  socialBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  socialBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
 });

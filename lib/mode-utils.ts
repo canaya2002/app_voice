@@ -28,6 +28,7 @@ export function getDefaultResultForMode(mode: OutputMode): Record<string, unknow
     ready_message: { title_suggestion: '', messages: { professional: '', friendly: '', firm: '', brief: '' }, suggested_subject: '', context_note: '' },
     study: { title_suggestion: '', summary: '', key_concepts: [], review_points: [], probable_questions: [], mnemonics: [], connections: [] },
     ideas: { title_suggestion: '', core_idea: '', opportunities: [], interesting_points: [], open_questions: [], suggested_next_step: '', structured_version: '' },
+    outline: { title_suggestion: '', sections: [], duration_covered: '', total_sections: 0, total_points: 0 },
   };
   return defaults[mode];
 }

@@ -177,6 +177,23 @@ function buildActionPlanSheets(result: Record<string, unknown>): SheetData[] {
   }];
 }
 
+function buildOutlineSheets(result: Record<string, unknown>): SheetData[] {
+  const sections = Array.isArray(result.sections) ? result.sections as Record<string, unknown>[] : [];
+  const rows: (string | number | null)[][] = [['Sección', 'Subsección', 'Punto']];
+  sections.forEach((section) => {
+    const heading = String(section.heading ?? '');
+    const points = Array.isArray(section.points) ? section.points as string[] : [];
+    points.forEach((p) => rows.push([heading, '', String(p)]));
+    const subs = Array.isArray(section.subsections) ? section.subsections as Record<string, unknown>[] : [];
+    subs.forEach((sub) => {
+      const subHeading = String(sub.heading ?? '');
+      const subPoints = Array.isArray(sub.points) ? sub.points as string[] : [];
+      subPoints.forEach((sp) => rows.push([heading, subHeading, String(sp)]));
+    });
+  });
+  return [{ name: 'Outline', data: rows }];
+}
+
 export async function exportToExcel(
   mode: OutputMode,
   result: Record<string, unknown>,
@@ -208,6 +225,9 @@ export async function exportToExcel(
       break;
     case 'ideas':
       sheets = buildIdeasSheets(result);
+      break;
+    case 'outline':
+      sheets = buildOutlineSheets(result);
       break;
     default:
       showToast('Este modo no soporta exportación Excel', 'info');

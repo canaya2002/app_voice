@@ -1,0 +1,29 @@
+{
+  "name": "sythio-mcp",
+  "version": "1.0.0",
+  "description": "Sythio MCP Server — Connect your voice notes to Claude, ChatGPT, and Cursor",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "sythio-mcp": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["mcp", "sythio", "voice-notes", "claude", "ai", "model-context-protocol"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sythio/sythio-mcp"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

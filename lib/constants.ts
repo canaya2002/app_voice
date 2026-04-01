@@ -107,7 +107,7 @@ export const LIMITS = {
 };
 
 /** Modes available on each tier. */
-export const FREE_MODES: OutputMode[] = ['summary', 'tasks', 'clean_text', 'ideas'];
+export const FREE_MODES: OutputMode[] = ['summary', 'tasks', 'clean_text', 'ideas', 'outline'];
 export const PREMIUM_MODES: OutputMode[] = ['action_plan', 'executive_report', 'ready_message', 'study'];
 export const ALL_MODES: OutputMode[] = [...FREE_MODES, ...PREMIUM_MODES];
 
@@ -141,6 +141,7 @@ export const MODE_CONFIGS: ModeConfig[] = [
   { id: 'ready_message', label: 'Mensaje listo', icon: 'send-outline', description: 'Dame algo para enviar', excelExport: true },
   { id: 'study', label: 'Estudio', icon: 'school-outline', description: 'Conviértelo en material', excelExport: true },
   { id: 'ideas', label: 'Ideas', icon: 'bulb-outline', description: 'Ordena esta idea', excelExport: true },
+  { id: 'outline', label: 'Outline', icon: 'list-outline', description: 'Estructura jerárquica', excelExport: true },
 ];
 
 export interface TemplateConfig {

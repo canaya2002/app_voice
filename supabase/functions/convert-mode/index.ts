@@ -12,7 +12,7 @@ const API_TIMEOUT_MS = 120_000;
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
 // ── Free-tier mode allowlist ──────────────────────────────────────────────
-const FREE_MODES = ["summary", "tasks", "clean_text", "ideas"];
+const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
 // ── Rate limit config ──────────────────────────────────────────────────────
 const DAILY_CONVERT_LIMITS = { free: 10, premium: 50 };
@@ -22,7 +22,7 @@ const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 // ── Max tokens per mode ────────────────────────────────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
   summary: 1100, tasks: 1400, action_plan: 1400, clean_text: 1300,
-  executive_report: 1600, ready_message: 700, study: 1400, ideas: 1100,
+  executive_report: 1600, ready_message: 700, study: 1400, ideas: 1100, outline: 1400,
 };
 
 const CHART_HINT = `\nIf the result contains countable categories (e.g. priority distribution, effort levels, types), include "charts":[{"type":"bar","title":"Chart title","data":[{"label":"Category","value":count,"color":"#hex"}]}] (max 2 charts). Colors: #EF4444=high/urgent, #F59E0B=medium/warning, #22C55E=low/success, #3B82F6=info. Omit "charts" if nothing quantifiable.`;
@@ -81,6 +81,7 @@ function buildModePrompt(mode: string, transcript: string, speakerInstr: string,
     ready_message: `Generate ready-to-send messages. Preferred tone: ${tone || "professional"}. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
     study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}${CHART_HINT}`,
     ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}${CHART_HINT}`,
+    outline: `Generate a hierarchical outline. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${t}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","sections":[{"heading":"section title","points":["point"],"subsections":[{"heading":"subsection","points":["detail"]}]}],"duration_covered":"total duration","total_sections":0,"total_points":0}`,
   };
   return prompts[mode] || prompts["summary"];
 }

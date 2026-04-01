@@ -26,6 +26,7 @@ interface NoteCardProps {
   note: Note;
   index: number;
   onDelete?: (id: string) => void;
+  onLongPress?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +130,7 @@ const BAR_COUNT = 12;
 // Component
 // ---------------------------------------------------------------------------
 
-export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
+export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCardProps) {
   // -- Swipe to delete (RN Animated for PanResponder compat) -----------------
   const translateX = useRef(new RNAnimated.Value(0)).current;
 
@@ -233,7 +234,7 @@ export default function NoteCard({ note, index, onDelete }: NoteCardProps) {
         style={[styles.cardOuter, { transform: [{ translateX }] }]}
         {...panResponder.panHandlers}
       >
-        <AnimatedPressable onPress={handlePress} accessibilityLabel={`Nota: ${note.title}`}>
+        <AnimatedPressable onPress={handlePress} onLongPress={onLongPress} accessibilityLabel={`Nota: ${note.title}`}>
           <View style={styles.card}>
             {/* Row 1: title + relative time */}
             <View style={styles.topRow}>

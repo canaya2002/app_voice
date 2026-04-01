@@ -9,8 +9,11 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+  mfaRequired: boolean;
+  mfaFactorId: string | null;
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  verifyMfa: (code: string) => Promise<boolean>;
   register: (email: string, password: string) => Promise<'ok' | 'confirm_email' | undefined>;
   resendConfirmation: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -24,6 +27,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   error: null,
+  mfaRequired: false,
+  mfaFactorId: null,
 
   initialize: async () => {
     try {
@@ -80,13 +85,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (email: string, password: string) => {
-    set({ loading: true, error: null });
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    set({ loading: true, error: null, mfaRequired: false, mfaFactorId: null });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       set({ loading: false, error: error.message });
       return;
     }
+    // Check if MFA is required (Supabase returns a session with aal1 if MFA is enrolled)
+    const { data: factorsData } = await supabase.auth.mfa.listFactors();
+    const verifiedFactor = factorsData?.totp?.find(f => f.status === 'verified');
+    if (verifiedFactor) {
+      // User has MFA — need to verify before proceeding
+      set({ loading: false, mfaRequired: true, mfaFactorId: verifiedFactor.id });
+      return;
+    }
     set({ loading: false });
+  },
+
+  verifyMfa: async (code: string) => {
+    const factorId = get().mfaFactorId;
+    if (!factorId) return false;
+    set({ loading: true, error: null });
+    try {
+      const { data: challenge, error: cErr } = await supabase.auth.mfa.challenge({ factorId });
+      if (cErr || !challenge) { set({ loading: false, error: 'Error al crear challenge MFA' }); return false; }
+      const { error: vErr } = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.id, code });
+      if (vErr) { set({ loading: false, error: 'Código incorrecto' }); return false; }
+      set({ loading: false, mfaRequired: false, mfaFactorId: null });
+      return true;
+    } catch {
+      set({ loading: false, error: 'Error de verificación' });
+      return false;
+    }
   },
 
   register: async (email: string, password: string) => {

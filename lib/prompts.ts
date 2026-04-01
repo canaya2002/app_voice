@@ -265,6 +265,36 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   "suggested_next_step": "siguiente paso concreto para avanzar esta idea",
   "structured_version": "la idea completa reorganizada de forma coherente"
 }`,
+    outline: `Genera un outline jerárquico y estructurado a partir de esta transcripción.
+
+${contextBlock}
+
+Transcripción:
+"""
+${ctx.transcript}
+"""
+
+Responde ÚNICAMENTE con JSON válido, sin markdown ni backticks:
+{
+  "title_suggestion": "título descriptivo del contenido",
+  "sections": [
+    {
+      "heading": "título de la sección principal",
+      "points": ["punto 1", "punto 2"],
+      "subsections": [
+        {
+          "heading": "subtema",
+          "points": ["detalle 1", "detalle 2"]
+        }
+      ]
+    }
+  ],
+  "duration_covered": "duración total cubierta",
+  "total_sections": 0,
+  "total_points": 0
+}
+
+Crea una estructura jerárquica clara que permita navegar el contenido. Cada sección debe tener un heading descriptivo, puntos clave bajo ella, y subsecciones cuando el tema lo amerite. Organiza cronológicamente o por tema según sea más natural para el contenido.`,
   };
 
   return prompts[mode];

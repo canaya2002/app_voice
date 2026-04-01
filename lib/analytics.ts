@@ -57,7 +57,9 @@ export type AnalyticsEvent =
   | 'onboarding_completed'
   | 'note_retry'
   | 'result_exported_docx'
-  | 'share_link_created';
+  | 'share_link_created'
+  | 'segment_highlighted'
+  | 'api_key_generated';
 
 type EventProperties = Record<string, string | number | boolean | null>;
 

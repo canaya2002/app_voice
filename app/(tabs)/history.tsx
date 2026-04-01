@@ -11,6 +11,7 @@ import {
   Modal,
   TouchableOpacity,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -28,6 +29,7 @@ import { useNotesStore } from '@/stores/notesStore';
 import { useAuthStore } from '@/stores/authStore';
 import { showToast } from '@/components/Toast';
 import { hapticSelection, hapticButtonPress } from '@/lib/haptics';
+import { exportPDF } from '@/lib/export';
 import type { Note, Folder } from '@/types';
 
 const FOLDER_COLORS = ['#8FD3FF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5856D6', '#FF2D55', '#A2845E'];
@@ -93,6 +95,10 @@ export default function HistoryScreen() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState(FOLDER_COLORS[0]);
+  // Batch selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchExporting, setBatchExporting] = useState(false);
 
   useEffect(() => {
     Promise.all([fetchNotes(), fetchFolders()]).then(() => setInitialLoad(false));
@@ -123,6 +129,57 @@ export default function HistoryScreen() {
     showToast('Carpeta creada', 'success');
   }, [createFolder, newFolderName, newFolderColor]);
 
+  const toggleSelect = useCallback((noteId: string) => {
+    hapticSelection();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  }, []);
+
+  const handleBatchExport = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setBatchExporting(true);
+    const selected = notes.filter((n) => selectedIds.has(n.id) && n.status === 'done');
+    for (const note of selected) {
+      try {
+        await exportPDF(note, note.primary_mode, undefined);
+      } catch { /* skip errors */ }
+    }
+    setBatchExporting(false);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    showToast(`${selected.length} notas exportadas`, 'success');
+  }, [selectedIds, notes]);
+
+  const handleBatchDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      `Eliminar ${selectedIds.size} notas`,
+      'Se moverán a la papelera.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            for (const nId of selectedIds) await softDeleteNote(nId);
+            setSelectMode(false);
+            setSelectedIds(new Set());
+            showToast(`${selectedIds.size} notas eliminadas`, 'info');
+          },
+        },
+      ],
+    );
+  }, [selectedIds, softDeleteNote]);
+
+  const handleExitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
   const filteredNotes = notes.filter((note) => {
     // Folder filter
     if (selectedFolder && note.folder_id !== selectedFolder) return false;
@@ -150,9 +207,33 @@ export default function HistoryScreen() {
     return true;
   });
 
-  const renderItem = ({ item, index }: { item: Note; index: number }) => (
-    <NoteCard note={item} index={index} onDelete={handleDelete} />
-  );
+  const renderItem = ({ item, index }: { item: Note; index: number }) => {
+    if (selectMode) {
+      const isSelected = selectedIds.has(item.id);
+      return (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => toggleSelect(item.id)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+        >
+          <View style={[styles.selectBox, isSelected && styles.selectBoxActive]}>
+            {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+          </View>
+          <View style={{ flex: 1 }}>
+            <NoteCard note={item} index={index} onDelete={handleDelete} />
+          </View>
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <NoteCard
+        note={item}
+        index={index}
+        onDelete={handleDelete}
+        onLongPress={() => { hapticSelection(); setSelectMode(true); toggleSelect(item.id); }}
+      />
+    );
+  };
 
   const colors = useThemeColors();
 
@@ -160,13 +241,47 @@ export default function HistoryScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <Animated.View entering={FadeInDown.delay(50).duration(500)} style={styles.header}>
-        <Text style={styles.title}>Historial</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Text style={styles.count}>{notes.length} notas</Text>
-          <AnimatedPressable onPress={handleOpenTrash} style={styles.trashBtn}>
-            <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
-          </AnimatedPressable>
-        </View>
+        {selectMode ? (
+          <>
+            <AnimatedPressable onPress={handleExitSelectMode}>
+              <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+            </AnimatedPressable>
+            <Text style={styles.title}>{selectedIds.size} seleccionadas</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <AnimatedPressable
+                onPress={handleBatchExport}
+                disabled={selectedIds.size === 0 || batchExporting}
+                style={[styles.batchBtn, { backgroundColor: COLORS.primary }]}
+              >
+                {batchExporting ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Ionicons name="download-outline" size={16} color="#FFF" />
+                )}
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={handleBatchDelete}
+                disabled={selectedIds.size === 0}
+                style={[styles.batchBtn, { backgroundColor: COLORS.error }]}
+              >
+                <Ionicons name="trash-outline" size={16} color="#FFF" />
+              </AnimatedPressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.title}>Historial</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Text style={styles.count}>{notes.length} notas</Text>
+              <AnimatedPressable onPress={() => { hapticButtonPress(); setSelectMode(true); }} style={styles.trashBtn}>
+                <Ionicons name="checkbox-outline" size={18} color={COLORS.textMuted} />
+              </AnimatedPressable>
+              <AnimatedPressable onPress={handleOpenTrash} style={styles.trashBtn}>
+                <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+              </AnimatedPressable>
+            </View>
+          </>
+        )}
       </Animated.View>
 
       {/* Folder bar */}
@@ -580,6 +695,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   modalCreateText: { fontSize: 14, color: '#FFFFFF', fontWeight: '600' },
+
+  // -- Batch select -----------------------------------------------------------
+  batchBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  selectBox: {
+    width: 24, height: 24, borderRadius: 6,
+    borderWidth: 2, borderColor: COLORS.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  selectBoxActive: {
+    backgroundColor: COLORS.primary, borderColor: COLORS.primary,
+  },
 
   // -- List -------------------------------------------------------------------
   list: {

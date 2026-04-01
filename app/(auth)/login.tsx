@@ -34,7 +34,8 @@ import AnimatedPressable from '@/components/AnimatedPressable';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, loading, error, clearError } = useAuthStore();
+  const { login, loading, error, clearError, mfaRequired, verifyMfa } = useAuthStore();
+  const [mfaCode, setMfaCode] = useState('');
   const passwordRef = useRef<TextInput>(null);
 
   /* ── shake animation for error ──────────────────────── */
@@ -142,27 +143,62 @@ export default function LoginScreen() {
             />
           </View>
 
-          {/* Login button */}
-          <AnimatedPressable
-            onPress={handleLogin}
-            disabled={loading}
-            style={[styles.buttonOuter, loading && styles.buttonDisabled]}
-            scaleDown={0.96}
-            accessibilityLabel="Iniciar sesión"
-          >
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryDark]}
-              style={styles.button}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+          {/* MFA challenge */}
+          {mfaRequired ? (
+            <>
+              <Animated.View entering={FadeInDown.delay(100)} style={styles.mfaBox}>
+                <Ionicons name="shield-checkmark" size={32} color={COLORS.primaryLight} style={{ alignSelf: 'center', marginBottom: 8 }} />
+                <Text style={styles.mfaTitle}>Verificación 2FA</Text>
+                <Text style={styles.mfaDesc}>Ingresa el código de 6 dígitos de tu app de autenticación</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="keypad-outline" size={20} color={COLORS.textMuted} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="000000"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={mfaCode}
+                    onChangeText={setMfaCode}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    autoFocus
+                    onSubmitEditing={async () => { if (mfaCode.length === 6) await verifyMfa(mfaCode); }}
+                  />
+                </View>
+              </Animated.View>
+              <AnimatedPressable
+                onPress={async () => { await verifyMfa(mfaCode); }}
+                disabled={loading || mfaCode.length !== 6}
+                style={[styles.buttonOuter, (loading || mfaCode.length !== 6) && styles.buttonDisabled]}
+                scaleDown={0.96}
+              >
+                <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.button} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Verificar</Text>}
+                </LinearGradient>
+              </AnimatedPressable>
+            </>
+          ) : (
+            /* Login button */
+            <AnimatedPressable
+              onPress={handleLogin}
+              disabled={loading}
+              style={[styles.buttonOuter, loading && styles.buttonDisabled]}
+              scaleDown={0.96}
+              accessibilityLabel="Iniciar sesión"
             >
-              {loading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.buttonText}>Iniciar sesión</Text>
-              )}
-            </LinearGradient>
-          </AnimatedPressable>
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryDark]}
+                style={styles.button}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Iniciar sesión</Text>
+                )}
+              </LinearGradient>
+            </AnimatedPressable>
+          )}
 
           {/* Forgot password */}
           <TouchableOpacity
@@ -184,6 +220,47 @@ export default function LoginScreen() {
           >
             <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
+
+          {/* Social login */}
+          <Animated.View entering={FadeIn.delay(750)} style={styles.socialSection}>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>o continúa con</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <View style={styles.socialRow}>
+              <TouchableOpacity
+                style={styles.socialBtn}
+                activeOpacity={0.7}
+                onPress={async () => {
+                  const redirectUrl = Linking.createURL('/(tabs)');
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: { redirectTo: redirectUrl },
+                  });
+                  if (error) showToast('Error con Google: ' + error.message, 'error');
+                }}
+              >
+                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                <Text style={styles.socialBtnText}>Google</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.socialBtn}
+                activeOpacity={0.7}
+                onPress={async () => {
+                  const redirectUrl = Linking.createURL('/(tabs)');
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'apple',
+                    options: { redirectTo: redirectUrl },
+                  });
+                  if (error) showToast('Error con Apple: ' + error.message, 'error');
+                }}
+              >
+                <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
+                <Text style={styles.socialBtnText}>Apple</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
 
           {/* Link */}
           <Animated.View entering={FadeIn.delay(800)}>
@@ -299,5 +376,63 @@ const styles = StyleSheet.create({
   linkBold: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  // MFA
+  mfaBox: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 4,
+  },
+  mfaTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  mfaDesc: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  // Social login
+  socialSection: {
+    marginTop: 24,
+    gap: 16,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  socialBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  socialBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
 });
