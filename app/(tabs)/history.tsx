@@ -79,6 +79,7 @@ function matchesTimeFilter(dateStr: string, timeFilter: TimeFilter): boolean {
 // ---------------------------------------------------------------------------
 
 export default function HistoryScreen() {
+  if (__DEV__) console.log('[history] loading');
   const {
     notes, loading, folders, trashedNotes,
     fetchNotes, subscribeToNotes, softDeleteNote, restoreNote, permanentDeleteNote,

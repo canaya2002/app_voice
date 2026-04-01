@@ -49,6 +49,12 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sythio necesita acceso a tus fotos para tu foto de perfil."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/icon.png",

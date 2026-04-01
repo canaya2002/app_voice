@@ -29,13 +29,22 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const ONBOARDING_KEY = "sythio_onboarding_done";
 
+// Catch unhandled promise rejections to prevent silent crashes
+if (__DEV__) {
+  const origHandler = (globalThis as any).onunhandledrejection;
+  (globalThis as any).onunhandledrejection = (e: any) => {
+    console.error("[UNHANDLED REJECTION]", e?.reason ?? e);
+    origHandler?.(e);
+  };
+}
+
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { session, loading, initialize } = useAuthStore();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const router = useRouter();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -53,14 +62,18 @@ export default function RootLayout() {
 
     // Initialize RevenueCat, identify user, and sync premium status
     const userId = useAuthStore.getState().session?.user?.id;
-    configurePurchases(userId).then(async () => {
-      if (userId) await identifyUser(userId);
-      const status = await checkSubscriptionStatus();
-      const currentPlan = useAuthStore.getState().user?.plan;
-      if (status !== currentPlan) {
-        useAuthStore.getState().setPlan(status);
-      }
-    });
+    configurePurchases(userId)
+      .then(async () => {
+        if (userId) await identifyUser(userId);
+        const status = await checkSubscriptionStatus();
+        const currentPlan = useAuthStore.getState().user?.plan;
+        if (status !== currentPlan) {
+          useAuthStore.getState().setPlan(status);
+        }
+      })
+      .catch((err) => {
+        if (__DEV__) console.warn("[layout] purchases init error:", err);
+      });
 
     // Listen for entitlement changes (renewal, expiry, etc.)
     const unsubPurchases = onCustomerInfoUpdated((isPremium) => {

@@ -4,6 +4,10 @@
  * Handles the full subscription lifecycle:
  *   configure → purchase → restore → entitlement check → sync with Supabase
  *
+ * IMPORTANT: react-native-purchases is lazy-loaded via require() to avoid
+ * crashing in Expo Go, where the native module is not available.
+ * Only runs on native iOS builds (not web, not Expo Go).
+ *
  * SETUP REQUIRED (outside code):
  * ─────────────────────────────────────────────────────────────────────────────
  * App Store Connect:
@@ -13,7 +17,7 @@
  *      - Reference Name: "Sythio Premium Monthly"
  *      - Product ID: com.sythio.app.premium.monthly
  *      - Duration: 1 Month
- *      - Price: $14.99
+ *      - Price: $4.99
  *      - Localization (es-MX): "Sythio Premium" / "Acceso completo a todos los modos"
  *   4. Add introductory offer: Free Trial, 7 days
  *   5. In App Store Connect > App > Subscriptions, add the product to your app
@@ -28,15 +32,22 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import Purchases, {
-  PurchasesOffering,
-  PurchasesPackage,
-  CustomerInfo,
-  LOG_LEVEL,
-  PURCHASES_ERROR_CODE,
-} from 'react-native-purchases';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { track } from '@/lib/analytics';
+
+// Local types to avoid importing react-native-purchases (crashes Expo Go)
+type PurchasesOffering = {
+  monthly: PurchasesPackage | null;
+  availablePackages: PurchasesPackage[];
+};
+type PurchasesPackage = {
+  identifier: string;
+  product: { priceString: string; introPrice?: { price: number } };
+};
+type CustomerInfo = {
+  entitlements: { active: Record<string, unknown> };
+};
 
 // ---------------------------------------------------------------------------
 // Config — Replace with real key from RevenueCat dashboard
@@ -44,6 +55,28 @@ import { track } from '@/lib/analytics';
 
 const REVENUECAT_IOS_KEY = 'appl_REPLACE_WITH_YOUR_REVENUECAT_API_KEY';
 const ENTITLEMENT_ID = 'premium';
+
+// ---------------------------------------------------------------------------
+// Expo Go guard — react-native-purchases requires a native dev build
+// ---------------------------------------------------------------------------
+
+const isExpoGo = Constants.appOwnership === 'expo';
+const canUsePurchases = Platform.OS === 'ios' && !isExpoGo;
+
+/**
+ * Lazy-load the Purchases SDK to avoid crash in Expo Go.
+ * The native module only exists in custom dev-client / production builds.
+ */
+function getRCModule(): any {
+  if (!canUsePurchases) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('react-native-purchases').default;
+  } catch {
+    if (__DEV__) console.warn('[purchases] react-native-purchases native module not available');
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -60,14 +93,19 @@ let configured = false;
  * Pass the Supabase user ID to link RevenueCat customer with your backend.
  */
 export async function configurePurchases(userId?: string): Promise<void> {
-  if (configured) return;
+  if (configured || !canUsePurchases) return;
 
   if (REVENUECAT_IOS_KEY.includes('REPLACE')) {
     if (__DEV__) console.warn('[purchases] RevenueCat API key not configured — skipping init');
     return;
   }
 
+  const Purchases = getRCModule();
+  if (!Purchases) return;
+
   if (__DEV__) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { LOG_LEVEL } = require('react-native-purchases');
     Purchases.setLogLevel(LOG_LEVEL.DEBUG);
   }
 
@@ -84,6 +122,8 @@ export async function configurePurchases(userId?: string): Promise<void> {
  */
 export async function identifyUser(userId: string): Promise<void> {
   if (!configured) return;
+  const Purchases = getRCModule();
+  if (!Purchases) return;
   try {
     await Purchases.logIn(userId);
   } catch (err) {
@@ -96,6 +136,8 @@ export async function identifyUser(userId: string): Promise<void> {
  * Returns the "default" offering or null.
  */
 export async function fetchOffering(): Promise<PurchasesOffering | null> {
+  const Purchases = getRCModule();
+  if (!Purchases || !configured) return null;
   try {
     const offerings = await Purchases.getOfferings();
     return offerings.current ?? null;
@@ -121,6 +163,8 @@ export async function getMonthlyPackage(): Promise<PurchasesPackage | null> {
 export async function purchasePackage(
   pkg: PurchasesPackage,
 ): Promise<{ success: boolean; customerInfo?: CustomerInfo; cancelled?: boolean; error?: string }> {
+  const Purchases = getRCModule();
+  if (!Purchases || !configured) return { success: false, error: 'Purchases not available' };
   try {
     track('purchase_started', { product: pkg.identifier });
     const { customerInfo } = await Purchases.purchasePackage(pkg);
@@ -140,7 +184,8 @@ export async function purchasePackage(
       return { success: false, cancelled: true };
     }
 
-    // Map error codes to user-friendly messages
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PURCHASES_ERROR_CODE } = require('react-native-purchases');
     let message = error.message ?? 'Error desconocido';
     if (error.code === String(PURCHASES_ERROR_CODE.NETWORK_ERROR)) {
       message = 'Sin conexión. Verifica tu internet.';
@@ -161,6 +206,8 @@ export async function restorePurchases(): Promise<{
   customerInfo?: CustomerInfo;
   error?: string;
 }> {
+  const Purchases = getRCModule();
+  if (!Purchases || !configured) return { success: false, error: 'Purchases not available' };
   try {
     track('restore_started', {});
     const customerInfo = await Purchases.restorePurchases();
@@ -186,6 +233,8 @@ export async function restorePurchases(): Promise<{
  * This is the source of truth — not profiles.plan.
  */
 export async function checkPremiumEntitlement(): Promise<boolean> {
+  const Purchases = getRCModule();
+  if (!Purchases || !configured) return false;
   try {
     const customerInfo = await Purchases.getCustomerInfo();
     return customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
@@ -209,6 +258,9 @@ export async function checkSubscriptionStatus(): Promise<'free' | 'premium'> {
 export function onCustomerInfoUpdated(
   callback: (isPremium: boolean) => void,
 ): () => void {
+  const Purchases = getRCModule();
+  if (!Purchases || !configured) return () => {};
+
   const listener = (info: CustomerInfo) => {
     const isPremium = info.entitlements.active[ENTITLEMENT_ID] != null;
     callback(isPremium);

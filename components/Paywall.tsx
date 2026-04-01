@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { PurchasesPackage } from 'react-native-purchases';
 import { COLORS } from '@/lib/constants';
 import { track } from '@/lib/analytics';
 import { hapticButtonPress, hapticPurchaseSuccess, hapticPurchaseError, hapticPaywallOpen } from '@/lib/haptics';
@@ -18,6 +17,15 @@ import { getMonthlyPackage, purchasePackage, restorePurchases } from '@/lib/purc
 import { useAuthStore } from '@/stores/authStore';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import { showToast } from '@/components/Toast';
+
+/** Local type to avoid importing react-native-purchases (crashes Expo Go) */
+interface RCPackage {
+  identifier: string;
+  product: {
+    priceString: string;
+    introPrice?: { price: number; priceString?: string };
+  };
+}
 
 interface PaywallProps {
   visible: boolean;
@@ -34,7 +42,7 @@ const BENEFITS = [
 ];
 
 export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
-  const [pkg, setPkg] = useState<PurchasesPackage | null>(null);
+  const [pkg, setPkg] = useState<RCPackage | null>(null);
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [loadingOffering, setLoadingOffering] = useState(true);
@@ -98,7 +106,7 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
   };
 
   // Price from RevenueCat or fallback
-  const priceLabel = pkg?.product?.priceString ?? '$14.99';
+  const priceLabel = pkg?.product?.priceString ?? '$4.99';
   const introOffer = pkg?.product?.introPrice;
   const hasFreeTrial = introOffer && introOffer.price === 0;
 

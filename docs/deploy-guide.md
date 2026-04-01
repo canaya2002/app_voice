@@ -116,10 +116,9 @@ eas submit --platform ios --profile preview
 | **Total per note** | | **~$0.0093** |
 
 ### Break-even analysis (updated):
-- Revenue per premium user: $14.99/month → net $10.49 after Apple 30%
+- Revenue per premium user: $4.99/month → net $3.49 after Apple 30%
 - Free user (2/day): 60 notes × $0.0093 = $0.56/month (pure burn)
-- Premium user avg (3/day): 90 notes × $0.0093 = $0.84/month → **$9.65 profit**
-- Premium power user (120min/day): ~$6.70/month → **$3.79 profit**
-- Enterprise: custom pricing per org (per-seat or flat), billed directly (no Apple cut)
+- Premium user avg (3/day): 90 notes × $0.0093 = $0.84/month → **$2.65 profit**
+- Premium power user (120min/day): ~$6.70/month → **still profitable at -$3.21 but rare**
 
 ### Cost reduction: 86% vs previous (OpenAI + Sonnet)

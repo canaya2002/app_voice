@@ -20,8 +20,12 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
-    // In production: send to Sentry/Crashlytics
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    if (__DEV__) {
+      console.error('[ErrorBoundary] CRASH:', error.message);
+      console.error('[ErrorBoundary] Stack:', error.stack);
+      console.error('[ErrorBoundary] Component:', errorInfo.componentStack);
+    }
   }
 
   handleReset = () => {

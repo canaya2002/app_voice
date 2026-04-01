@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
-import type { User, UserPlan } from '@/types';
+import type { User } from '@/types';
 import type { Session } from '@supabase/supabase-js';
-import { checkDomainAutoJoin } from '@/lib/enterprise';
 
 interface AuthState {
   session: Session | null;
@@ -20,7 +19,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   fetchProfile: () => Promise<void>;
-  setPlan: (plan: UserPlan) => void;
+  setPlan: (plan: 'free' | 'premium') => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -57,49 +56,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { session } = get();
     if (!session) return;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
+    try {
+      if (__DEV__) console.log('[authStore] fetchProfile for', session.user.id);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
 
-    if (error) {
-      // Profile fetch failed — non-critical, user can retry
-      return;
-    }
-
-    let orgId = data.org_id ?? null;
-    let plan: UserPlan = data.plan ?? 'free';
-
-    // Auto-join by email domain if user has no org yet
-    if (!orgId && data.email) {
-      try {
-        const autoJoinOrgId = await checkDomainAutoJoin(data.email, data.id);
-        if (autoJoinOrgId) {
-          orgId = autoJoinOrgId;
-          plan = 'enterprise';
-        }
-      } catch {
-        // Non-critical — skip auto-join on error
+      if (error) {
+        if (__DEV__) console.warn('[authStore] fetchProfile error:', error.message);
+        return;
       }
-    }
+      if (__DEV__) console.log('[authStore] profile loaded, plan:', data?.plan);
 
-    set({
-      user: {
-        id: data.id,
-        email: data.email,
-        created_at: data.created_at,
-        plan,
-        daily_count: data.daily_count,
-        daily_audio_minutes: data.daily_audio_minutes ?? 0,
-        last_reset_date: data.last_reset_date,
-        custom_vocabulary: Array.isArray(data.custom_vocabulary) ? data.custom_vocabulary : [],
-        display_name: data.display_name ?? undefined,
-        avatar_url: data.avatar_url ?? undefined,
-        welcome_completed: !!data.welcome_completed,
-        org_id: orgId ?? undefined,
-      },
-    });
+      set({
+        user: {
+          id: data.id,
+          email: data.email,
+          created_at: data.created_at,
+          plan: data.plan ?? 'free',
+          daily_count: data.daily_count ?? 0,
+          daily_audio_minutes: data.daily_audio_minutes ?? 0,
+          last_reset_date: data.last_reset_date ?? new Date().toISOString().split('T')[0],
+          custom_vocabulary: Array.isArray(data.custom_vocabulary) ? data.custom_vocabulary : [],
+          display_name: data.display_name ?? undefined,
+          avatar_url: data.avatar_url ?? undefined,
+          welcome_completed: !!data.welcome_completed,
+        },
+      });
+    } catch (err) {
+      if (__DEV__) console.error('[authStore] fetchProfile crash:', err);
+    }
   },
 
   login: async (email: string, password: string) => {
@@ -190,14 +178,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  setPlan: async (plan: UserPlan) => {
+  setPlan: async (plan: 'free' | 'premium') => {
     const { user, session } = get();
     if (user) {
       set({ user: { ...user, plan } });
     }
     // Persist to DB
     if (session) {
-      await supabase.from('profiles').update({ plan }).eq('id', session.user.id);
+      try {
+        await supabase.from('profiles').update({ plan }).eq('id', session.user.id);
+      } catch (err) {
+        if (__DEV__) console.warn('[authStore] setPlan DB error:', err);
+      }
     }
   },
 }));

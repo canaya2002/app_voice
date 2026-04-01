@@ -98,22 +98,12 @@ export function useIsDark(): boolean {
 export const LIMITS = {
   FREE_DAILY_NOTES: 2,
   PREMIUM_DAILY_NOTES: Infinity,
-  ENTERPRISE_DAILY_NOTES: Infinity,
   FREE_MAX_AUDIO_DURATION: 600,       // 10 min
   PREMIUM_MAX_AUDIO_DURATION: 1800,   // 30 min
-  ENTERPRISE_MAX_AUDIO_DURATION: 3600, // 60 min
-  FREE_MAX_DAILY_AUDIO_MINUTES: 20,   // 20 min/day for free
   PREMIUM_MAX_DAILY_AUDIO_MINUTES: 120, // 120 min/day cap for premium
-  ENTERPRISE_MAX_DAILY_AUDIO_MINUTES: Infinity, // no limit for enterprise
   MAX_AUDIO_DURATION: 600,            // default (overridden by plan)
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   MAX_TRANSCRIPT_CHARS: 15000,
-  FREE_RECONVERSIONS_PER_DAY: 10,
-  PREMIUM_RECONVERSIONS_PER_DAY: 50,
-  ENTERPRISE_RECONVERSIONS_PER_DAY: Infinity,
-  PREMIUM_PRICE: 14.99,
-  PREMIUM_TRIAL_DAYS: 7,
-  PREMIUM_PRODUCT_ID: 'com.sythio.app.premium.monthly',
 };
 
 /** Modes available on each tier. */

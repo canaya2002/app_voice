@@ -56,6 +56,7 @@ const MOTIVATIONAL = [
 ];
 
 export default function HomeScreen() {
+  if (__DEV__) console.log('[home] loading');
   const { user, fetchProfile } = useAuthStore();
   const { notes, createNote, subscribeToNote } = useNotesStore();
   const { selectedTemplate, selectedMode, setSelectedTemplate, setSelectedMode } = useRecordingStore();

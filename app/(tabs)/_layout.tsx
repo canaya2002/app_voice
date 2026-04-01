@@ -38,6 +38,7 @@ const TAB_CONFIG: TabConfig[] = [
   { name: 'index', label: 'Inicio', iconFocused: 'home', iconDefault: 'home-outline' },
   { name: 'history', label: 'Historial', iconFocused: 'time', iconDefault: 'time-outline' },
   { name: 'profile', label: 'Perfil', iconFocused: 'person', iconDefault: 'person-outline' },
+  { name: 'menu', label: 'Más', iconFocused: 'menu', iconDefault: 'menu-outline' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 // ---------------------------------------------------------------------------
 
 export default function TabLayout() {
+  if (__DEV__) console.log('[tabs layout] loading');
   const renderTabBar = useCallback(
     (props: BottomTabBarProps) => <CustomTabBar {...props} />,
     [],
@@ -194,6 +196,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: 'Inicio' }} />
       <Tabs.Screen name="history" options={{ title: 'Historial' }} />
       <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />
+      <Tabs.Screen name="menu" options={{ title: 'Más' }} />
     </Tabs>
   );
 }
