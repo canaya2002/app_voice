@@ -12,8 +12,12 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.sythio.app",
       "buildNumber": "1",
+      "requireFullScreen": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sythio usa el micrófono para grabar tus notas de voz, reuniones e ideas. El audio se procesa con IA para generar resúmenes, tareas y más.",
+        "NSMicrophoneUsageDescription": "Sythio usa el micrófono para grabar notas de voz, reuniones e ideas. El audio se procesa con IA para generar resúmenes, tareas y reportes.",
+        "NSPhotoLibraryUsageDescription": "Sythio necesita acceso a tus fotos para que puedas establecer una foto de perfil personalizada.",
+        "NSCameraUsageDescription": "Sythio usa la cámara para que puedas tomar una foto de perfil.",
+        "NSPrivacyTracking": false,
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["audio"]
       },

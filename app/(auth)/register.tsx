@@ -186,7 +186,10 @@ export default function RegisterScreen() {
 
           {/* Terms */}
           <Text style={styles.termsText}>
-            Al crear tu cuenta, aceptas los Términos de Servicio y la Política de Privacidad de Sythio.
+            Al crear tu cuenta, aceptas los{' '}
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://sythio.com/terms')}>Términos de Servicio</Text>
+            {' '}y la{' '}
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://sythio.com/privacy-policy')}>Política de Privacidad</Text>.
           </Text>
 
           {/* Register button */}
@@ -364,6 +367,10 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 8,
     paddingHorizontal: 8,
+  },
+  termsLink: {
+    color: COLORS.textSecondary,
+    textDecorationLine: 'underline' as const,
   },
   // Social login
   socialSection: {

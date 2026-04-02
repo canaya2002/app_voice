@@ -269,7 +269,6 @@ export default function WelcomeScreen() {
 
   return (
     <View style={st.root}>
-      <ConstellationBg />
       <SafeAreaView style={st.safe}>
         <KeyboardAvoidingView style={st.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView ref={scrollRef} style={st.flex} contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

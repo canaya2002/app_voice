@@ -26,8 +26,24 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import LoadingScreen from "@/components/LoadingScreen";
 
 const ONBOARDING_KEY = "sythio_onboarding_done";
+
+// ─── APP STORE CONNECT: PRIVACY NUTRITION LABEL ─────────────────────────
+// Data collected (linked to user, not used for tracking):
+//   - Audio recordings (voice notes) — processed by Groq for transcription
+//   - Email address — authentication via Supabase
+//   - Display name — optional, stored in Supabase
+//   - Profile photo — optional, stored in Supabase Storage
+//   - Usage analytics — feature usage via lib/analytics.ts
+//   - User ID — Supabase auth identifier
+// Third-party services:
+//   - Groq (groq.com) — audio transcription
+//   - Anthropic (anthropic.com) — text processing with Claude
+//   - RevenueCat (revenuecat.com) — in-app purchase management
+//   - Supabase (supabase.com) — auth, database, storage (hosted on AWS)
+// ─────────────────────────────────────────────────────────────────────────
 
 // Catch unhandled promise rejections to prevent silent crashes
 if (__DEV__) {
@@ -184,8 +200,8 @@ export default function RootLayout() {
           router.replace("/(auth)/login");
         }
       } else if (!user) {
-        // Session exists but profile not loaded yet — wait
-        return;
+        // Session exists but profile not loaded yet — show loading
+        return; // LoadingScreen is rendered below while user is null
       } else if (!user.welcome_completed) {
         // First-time registration — show Sythio welcome chat
         if (segments[1] !== "welcome") {
@@ -201,15 +217,21 @@ export default function RootLayout() {
     navigate();
   }, [session, loading, onboardingDone, segments, router, user]);
 
-  if (loading || onboardingDone === null || !fontsLoaded) {
+  // Initial boot: splash screen is still visible, safe to return null
+  const initialBoot = onboardingDone === null || !fontsLoaded;
+  if (initialBoot) {
     return null;
   }
+
+  // After initial boot: show loading screen when auth is processing or profile loading
+  const awaitingProfile = !!session && !user;
+  const showLoading = loading || awaitingProfile;
 
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={styles.root}>
         <StatusBar style={isDark ? "light" : "dark"} />
-        <Slot />
+        {showLoading ? <LoadingScreen /> : <Slot />}
         <ToastProvider />
       </GestureHandlerRootView>
     </ErrorBoundary>

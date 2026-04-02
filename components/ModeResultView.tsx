@@ -1165,30 +1165,38 @@ function OutlineView({ result }: { result: Record<string, unknown> }) {
 // Main Component
 // ---------------------------------------------------------------------------
 
+function AIDisclosure() {
+  return (
+    <Text style={styles.aiDisclosure}>
+      Contenido generado por IA. Puede contener imprecisiones.
+    </Text>
+  );
+}
+
 export default function ModeResultView({ mode, result, noteId }: ModeResultViewProps) {
+  let content: React.ReactNode;
   switch (mode) {
     case 'summary':
-      return <SummaryView result={result} />;
+      content = <SummaryView result={result} />; break;
     case 'tasks':
-      return <TasksView result={result} noteId={noteId} />;
+      content = <TasksView result={result} noteId={noteId} />; break;
     case 'action_plan':
-      return <ActionPlanView result={result} />;
+      content = <ActionPlanView result={result} />; break;
     case 'clean_text':
-      return <CleanTextView result={result} />;
+      content = <CleanTextView result={result} />; break;
     case 'executive_report':
-      return <ExecutiveReportView result={result} />;
+      content = <ExecutiveReportView result={result} />; break;
     case 'ready_message':
-      return <ReadyMessageView result={result} />;
+      content = <ReadyMessageView result={result} />; break;
     case 'study':
-      return <StudyView result={result} />;
+      content = <StudyView result={result} />; break;
     case 'ideas':
-      return <IdeasView result={result} />;
+      content = <IdeasView result={result} />; break;
     case 'outline':
-      return <OutlineView result={result} />;
+      content = <OutlineView result={result} />; break;
     default: {
-      // Unknown mode — render raw JSON safely
       const _exhaustive: never = mode;
-      return (
+      content = (
         <View style={styles.modeContainer}>
           <Card>
             <Text style={styles.bodyText}>
@@ -1199,6 +1207,12 @@ export default function ModeResultView({ mode, result, noteId }: ModeResultViewP
       );
     }
   }
+  return (
+    <>
+      {content}
+      <AIDisclosure />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1823,5 +1837,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: COLORS.textSecondary,
+  },
+  aiDisclosure: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+    opacity: 0.7,
   },
 });

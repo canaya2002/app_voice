@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -194,7 +195,12 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
 
             {/* Legal */}
             <Text style={styles.legalText}>
-              El pago se cargará a tu cuenta de Apple. La suscripción se renueva automáticamente a menos que se cancele al menos 24 horas antes del fin del período.
+              El pago se cargará a tu cuenta de Apple. La suscripción ({priceLabel}/mes) se renueva automáticamente a menos que se cancele al menos 24 horas antes del fin del período actual. Gestiona tu suscripción desde Configuración {'>'} Apple ID {'>'} Suscripciones.
+            </Text>
+            <Text style={styles.legalLinks}>
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/terms')}>Términos</Text>
+              {'  ·  '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/privacy-policy')}>Privacidad</Text>
             </Text>
           </ScrollView>
         </View>
@@ -231,4 +237,6 @@ const styles = StyleSheet.create({
   restoreBtn: { alignItems: 'center', paddingVertical: 10 },
   restoreText: { fontSize: 14, color: COLORS.textMuted, fontWeight: '500' },
   legalText: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center', lineHeight: 14, marginTop: 12 },
+  legalLinks: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 8 },
+  legalLink: { textDecorationLine: 'underline' as const },
 });

@@ -273,6 +273,13 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
           </Animated.View>
+
+          {/* Legal */}
+          <Text style={styles.legalText}>
+            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/terms')}>Términos</Text>
+            {'  ·  '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/privacy-policy')}>Privacidad</Text>
+          </Text>
         </ScrollView>
     </SafeAreaView>
   );
@@ -374,6 +381,16 @@ const styles = StyleSheet.create({
   linkBold: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  legalText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  legalLink: {
+    textDecorationLine: 'underline' as const,
   },
   // MFA
   mfaBox: {

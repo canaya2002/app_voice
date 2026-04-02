@@ -38,7 +38,7 @@ import {
   hapticCopyClipboard,
 } from '@/lib/haptics';
 
-const PRIVACY_URL = 'https://sythio.com/privacy';
+const PRIVACY_URL = 'https://sythio.com/privacy-policy';
 const TERMS_URL = 'https://sythio.com/terms';
 const SUPPORT_EMAIL = 'soporte@sythio.com';
 
