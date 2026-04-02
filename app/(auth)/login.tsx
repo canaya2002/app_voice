@@ -74,8 +74,6 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.bg}>
       {/* Floating orbs */}
-      <FloatingOrb size={350} color={COLORS.primaryLight} top={-60} right={-100} />
-      <FloatingOrb size={250} color={COLORS.primary} top={500} left={-80} delay={400} />
 
         <ScrollView
           style={styles.container}

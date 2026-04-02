@@ -41,7 +41,7 @@ if (__DEV__) {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const { session, loading, initialize } = useAuthStore();
+  const { session, loading, initialize, user } = useAuthStore();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const router = useRouter();
   const segments = useSegments() as string[];
@@ -183,6 +183,14 @@ export default function RootLayout() {
         if (!inAuthGroup || segments[1] === "onboarding") {
           router.replace("/(auth)/login");
         }
+      } else if (!user) {
+        // Session exists but profile not loaded yet — wait
+        return;
+      } else if (!user.welcome_completed) {
+        // First-time registration — show Sythio welcome chat
+        if (segments[1] !== "welcome") {
+          router.replace("/(auth)/welcome");
+        }
       } else {
         if (!inTabsGroup) {
           router.replace("/(tabs)");
@@ -191,7 +199,7 @@ export default function RootLayout() {
     };
 
     navigate();
-  }, [session, loading, onboardingDone, segments, router]);
+  }, [session, loading, onboardingDone, segments, router, user]);
 
   if (loading || onboardingDone === null || !fontsLoaded) {
     return null;

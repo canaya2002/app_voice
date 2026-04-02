@@ -126,8 +126,9 @@ const T: Record<string, Record<string, string>> = {
 
 export default function WelcomeScreen() {
   const { user, fetchProfile } = useAuthStore();
-  const [step, setStep] = useState<Step>('language');
-  const [lang, setLang] = useState('en');
+  const [step, setStep] = useState<Step>('greeting');
+  const [lang, setLang] = useState('es');
+  const [langReady, setLangReady] = useState(false);
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [typing, setTyping] = useState(false);
   const [name, setName] = useState('');
@@ -135,7 +136,6 @@ export default function WelcomeScreen() {
   const [vocabInput, setVocabInput] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [selectedLang, setSelectedLang] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const t = T[lang] ?? T.es;
@@ -164,22 +164,24 @@ export default function WelcomeScreen() {
     next();
   }, []);
 
-  const selectLanguage = (code: string) => {
-    hapticSelection();
-    setSelectedLang(code);
-    setLang(code);
-    // Delay to show selection before transitioning
-    setTimeout(() => {
-      setStep('greeting');
-      const s = T[code] ?? T.es;
+  // Read language from onboarding and start greeting automatically
+  useEffect(() => {
+    if (langReady) return;
+    AsyncStorage.getItem('sythio_user_language').then((code) => {
+      const resolvedLang = code && T[code] ? code : 'es';
+      setLang(resolvedLang);
+      setLangReady(true);
+      const s = T[resolvedLang] ?? T.es;
       const g = hour < 12 ? 'gm' : hour < 19 ? 'ga' : 'gn';
-      showSythio([
-        { id: 'g1', text: `${s[g]} 👋`, from: 'sythio', delay: 500 },
-        { id: 'g2', text: s.intro, from: 'sythio', delay: 900 },
-        { id: 'g3', text: s.askName, from: 'sythio', delay: 700 },
-      ]);
-    }, 400);
-  };
+      setTimeout(() => {
+        showSythio([
+          { id: 'g1', text: `${s[g]} 👋`, from: 'sythio', delay: 500 },
+          { id: 'g2', text: s.intro, from: 'sythio', delay: 900 },
+          { id: 'g3', text: s.askName, from: 'sythio', delay: 700 },
+        ]);
+      }, 300);
+    });
+  }, [langReady, showSythio, hour]);
 
   const submitName = () => {
     if (name.trim().length < 2) return;
@@ -279,31 +281,8 @@ export default function WelcomeScreen() {
               </Animated.View>
             </Animated.View>
 
-            {/* Step: Language */}
-            {step === 'language' && (
-              <Animated.View entering={FadeInDown.duration(500).delay(300)} style={st.langSection}>
-                <Text style={st.langTitle}>Choose your language</Text>
-                <Text style={st.langSub}>You can change this later</Text>
-                <View style={st.langGrid}>
-                  {LANGUAGES.map((l, i) => (
-                    <Animated.View key={l.code} entering={FadeInUp.duration(400).delay(400 + i * 80)}>
-                      <TouchableOpacity
-                        onPress={() => selectLanguage(l.code)}
-                        style={[st.langBtn, selectedLang === l.code && st.langBtnActive]}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={st.langFlag}>{l.flag}</Text>
-                        <Text style={[st.langLabel, selectedLang === l.code && st.langLabelActive]}>{l.label}</Text>
-                        {selectedLang === l.code && <Ionicons name="checkmark-circle" size={20} color="#8FD3FF" style={{ marginLeft: 'auto' }} />}
-                      </TouchableOpacity>
-                    </Animated.View>
-                  ))}
-                </View>
-              </Animated.View>
-            )}
-
             {/* Chat */}
-            {step !== 'language' && msgs.map(m => <Bubble key={m.id} text={m.text} from={m.from} />)}
+            {msgs.map(m => <Bubble key={m.id} text={m.text} from={m.from} />)}
             {typing && <TypingDots />}
 
             {/* Name */}
