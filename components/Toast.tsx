@@ -24,6 +24,12 @@ interface ToastItemProps {
   onDone: (id: number) => void;
 }
 
+const TOAST_COLORS = {
+  success: '#1DB954',
+  error: '#E5383B',
+  info: '#6CB4EE',
+};
+
 function ToastItem({ message, onDone }: ToastItemProps) {
   const translateY = useRef(new Animated.Value(-80)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -33,12 +39,12 @@ function ToastItem({ message, onDone }: ToastItemProps) {
       Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
-        tension: 80,
-        friction: 10,
+        tension: 70,
+        friction: 11,
       }),
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 200,
+        duration: 250,
         useNativeDriver: true,
       }),
     ]).start();
@@ -50,12 +56,12 @@ function ToastItem({ message, onDone }: ToastItemProps) {
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: -80,
-          duration: 250,
+          duration: 280,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 250,
+          duration: 280,
           useNativeDriver: true,
         }),
       ]).start(() => onDone(message.id));
@@ -64,12 +70,7 @@ function ToastItem({ message, onDone }: ToastItemProps) {
     return () => clearTimeout(timer);
   }, [translateY, opacity, message.id, onDone]);
 
-  const bgColor =
-    message.type === 'error'
-      ? COLORS.error
-      : message.type === 'info'
-        ? COLORS.info
-        : COLORS.success;
+  const bgColor = TOAST_COLORS[message.type] || TOAST_COLORS.info;
 
   return (
     <Animated.View
@@ -120,15 +121,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toast: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
     marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
     ...Platform.select({
       ios: {},
       android: {},
@@ -140,5 +141,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+    letterSpacing: -0.1,
   },
 });

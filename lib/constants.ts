@@ -3,81 +3,81 @@ import type { OutputMode, NoteTemplate } from '@/types';
 import { useThemeStore } from '@/stores/themeStore';
 
 export const COLORS = {
-  // Core brand — negro elegante + azul cielo
-  primary: '#0B0B0B',
-  primaryLight: '#8FD3FF',
-  primaryDark: '#000000',
-  primaryPale: '#E8F4FD',
-  primaryGlow: 'rgba(143, 211, 255, 0.25)',
+  // Core brand — deep ink + luminous blue accent
+  primary: '#0A0A0C',
+  primaryLight: '#6CB4EE',
+  primaryDark: '#050507',
+  primaryPale: '#EAF2FB',
+  primaryGlow: 'rgba(108, 180, 238, 0.22)',
 
-  // Backgrounds
-  background: '#FFFFFF',
-  backgroundSecondary: '#FAFBFC',
+  // Backgrounds — warm atmospheric, not flat white
+  background: '#F8F7F4',
+  backgroundSecondary: '#F2F1ED',
   surface: '#FFFFFF',
-  surfaceAlt: '#F5F7FA',
+  surfaceAlt: '#F0EFE9',
 
-  // Glassmorphism
-  glassBg: 'rgba(255, 255, 255, 0.72)',
-  glassBorder: 'rgba(255, 255, 255, 0.5)',
-  glassShadow: 'rgba(0, 0, 0, 0.08)',
+  // Glassmorphism — warmer, richer
+  glassBg: 'rgba(255, 255, 255, 0.68)',
+  glassBorder: 'rgba(255, 255, 255, 0.45)',
+  glassShadow: 'rgba(0, 0, 0, 0.10)',
 
   // Accent
-  accentGold: '#F59E0B',
-  accentTeal: '#0EA5E9',
+  accentGold: '#E8930C',
+  accentTeal: '#0C8CE9',
 
-  // Text
-  textPrimary: '#0B0B0B',
-  textSecondary: '#8A8F98',
-  textMuted: '#B8BCC4',
+  // Text — better contrast hierarchy
+  textPrimary: '#111114',
+  textSecondary: '#6E7179',
+  textMuted: '#A3A7B0',
 
-  // Semantic
-  success: '#34C759',
-  warning: '#FF9500',
-  error: '#FF3B30',
-  info: '#8FD3FF',
+  // Semantic — slightly richer tones
+  success: '#1DB954',
+  warning: '#E8930C',
+  error: '#E5383B',
+  info: '#6CB4EE',
 
-  // Borders
-  border: '#EBEDF0',
-  borderLight: '#F5F7FA',
+  // Borders — warmer undertone
+  border: '#E4E2DC',
+  borderLight: '#ECEAE4',
 
   // Recording
-  recording: '#FF3B30',
-  recordingBg: '#FFF0EF',
+  recording: '#E5383B',
+  recordingBg: '#FEF0EF',
 };
 
 export const DARK_COLORS: typeof COLORS = {
-  primary: '#FFFFFF',
-  primaryLight: '#8FD3FF',
-  primaryDark: '#FAFAFA',
-  primaryPale: '#1A2A3A',
-  primaryGlow: 'rgba(143, 211, 255, 0.25)',
+  primary: '#F5F4F0',
+  primaryLight: '#6CB4EE',
+  primaryDark: '#EEEEE8',
+  primaryPale: '#172030',
+  primaryGlow: 'rgba(108, 180, 238, 0.22)',
 
-  background: '#0B0B0B',
-  backgroundSecondary: '#111111',
-  surface: '#1A1A1A',
-  surfaceAlt: '#222222',
+  background: '#0C0C0E',
+  backgroundSecondary: '#121214',
+  surface: '#1A1A1E',
+  surfaceAlt: '#222226',
 
-  glassBg: 'rgba(26, 26, 26, 0.72)',
-  glassBorder: 'rgba(255, 255, 255, 0.08)',
-  glassShadow: 'rgba(0, 0, 0, 0.3)',
+  glassBg: 'rgba(26, 26, 30, 0.72)',
+  glassBorder: 'rgba(255, 255, 255, 0.07)',
+  glassShadow: 'rgba(0, 0, 0, 0.35)',
 
-  accentGold: '#FBBF24',
-  accentTeal: '#38BDF8',
+  accentGold: '#F5A623',
+  accentTeal: '#3AADFF',
 
-  textPrimary: '#F5F5F5',
-  textSecondary: '#9A9FA8',
-  textMuted: '#5A5F68',
+  textPrimary: '#F0EFE9',
+  textSecondary: '#8E919A',
+  textMuted: '#55585F',
 
-  success: '#34C759',
-  warning: '#FF9500',
-  error: '#FF3B30',
-  info: '#8FD3FF',
+  success: '#1DB954',
+  warning: '#E8930C',
+  error: '#E5383B',
+  info: '#6CB4EE',
 
-  border: '#2A2A2A',
-  borderLight: '#222222',
+  border: '#28282C',
+  borderLight: '#222226',
 
-  recording: '#FF3B30',
-  recordingBg: '#2A1515',
+  recording: '#E5383B',
+  recordingBg: '#2A1616',
 };
 
 export type ThemeColors = typeof COLORS;
@@ -116,12 +116,12 @@ export function isModeFreeTier(mode: OutputMode): boolean {
 }
 
 export const SPEAKER_COLORS = [
-  { bg: '#E8F4FD', text: '#1A7FB8', name: 'blue' },
-  { bg: '#F0FFF4', text: '#1A7F4B', name: 'green' },
-  { bg: '#FFF8F0', text: '#B8600A', name: 'amber' },
-  { bg: '#F5F7FA', text: '#5A5F68', name: 'gray' },
-  { bg: '#FCE7F3', text: '#9D174D', name: 'pink' },
-  { bg: '#E0E7FF', text: '#3730A3', name: 'indigo' },
+  { bg: '#E6F0FA', text: '#1B6FA8', name: 'blue' },
+  { bg: '#E8F5E9', text: '#1A7A42', name: 'green' },
+  { bg: '#FFF3E0', text: '#AD5A00', name: 'amber' },
+  { bg: '#F0EFEA', text: '#535660', name: 'gray' },
+  { bg: '#FCE4EC', text: '#9B1048', name: 'pink' },
+  { bg: '#E8EAF6', text: '#303090', name: 'indigo' },
 ];
 
 export interface ModeConfig {

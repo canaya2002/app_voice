@@ -9,7 +9,7 @@ interface GlassCardProps {
   intensity?: number;
 }
 
-export default function GlassCard({ children, style, intensity = 50 }: GlassCardProps) {
+export default function GlassCard({ children, style, intensity = 60 }: GlassCardProps) {
   if (Platform.OS === 'web') {
     return (
       <View style={[styles.fallback, style]}>
@@ -31,15 +31,15 @@ export default function GlassCard({ children, style, intensity = 50 }: GlassCard
 
 const styles = StyleSheet.create({
   outer: {
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: 'hidden',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 30,
+    elevation: 10,
   },
   blur: {
     flex: 1,
@@ -48,14 +48,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fallback: {
-    borderRadius: 20,
-    backgroundColor: `${COLORS.surface}E6`,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 22,
+    backgroundColor: `${COLORS.surface}E8`,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 30,
+    elevation: 10,
   },
 });

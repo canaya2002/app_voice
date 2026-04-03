@@ -9,7 +9,7 @@ interface SkeletonProps {
   style?: ViewStyle;
 }
 
-function SkeletonBox({ width = '100%', height = 16, borderRadius = 8, style }: SkeletonProps) {
+function SkeletonBox({ width = '100%', height = 16, borderRadius = 10, style }: SkeletonProps) {
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -17,12 +17,12 @@ function SkeletonBox({ width = '100%', height = 16, borderRadius = 8, style }: S
       Animated.sequence([
         Animated.timing(shimmer, {
           toValue: 1,
-          duration: 1000,
+          duration: 1100,
           useNativeDriver: true,
         }),
         Animated.timing(shimmer, {
           toValue: 0,
-          duration: 1000,
+          duration: 1100,
           useNativeDriver: true,
         }),
       ])
@@ -33,7 +33,7 @@ function SkeletonBox({ width = '100%', height = 16, borderRadius = 8, style }: S
 
   const opacity = shimmer.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
+    outputRange: [0.25, 0.55],
   });
 
   return (
@@ -59,8 +59,8 @@ export function NoteCardSkeleton() {
         <SkeletonBox width="65%" height={18} />
         <SkeletonBox width={60} height={22} borderRadius={11} />
       </View>
-      <SkeletonBox width="90%" height={14} style={{ marginTop: 10 }} />
-      <SkeletonBox width="70%" height={14} style={{ marginTop: 6 }} />
+      <SkeletonBox width="90%" height={14} style={{ marginTop: 12 }} />
+      <SkeletonBox width="70%" height={14} style={{ marginTop: 7 }} />
       <View style={styles.footer}>
         <SkeletonBox width={80} height={12} />
         <SkeletonBox width={50} height={12} />
@@ -82,8 +82,8 @@ export function NoteCardSkeletonList({ count = 5 }: { count?: number }) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: 14,
   },
   list: {
     paddingHorizontal: 20,

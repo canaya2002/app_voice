@@ -22,21 +22,28 @@ import {
 } from 'react-native-reanimated';
 
 export const SPRING = {
-  gentle: { damping: 15, stiffness: 150, mass: 0.5 },
-  bouncy: { damping: 10, stiffness: 200, mass: 0.3 },
-  snappy: { damping: 20, stiffness: 400, mass: 0.5 },
-  slow: { damping: 20, stiffness: 80, mass: 1 },
+  gentle: { damping: 18, stiffness: 140, mass: 0.6 },
+  bouncy: { damping: 12, stiffness: 200, mass: 0.35 },
+  snappy: { damping: 22, stiffness: 380, mass: 0.5 },
+  slow: { damping: 24, stiffness: 70, mass: 1.1 },
+  premium: { damping: 20, stiffness: 160, mass: 0.7 },
 } as const;
 
 export const staggeredEntry = (index: number) =>
-  FadeInDown.delay(index * 80).springify().damping(15).stiffness(150);
+  FadeInDown.delay(index * 60).springify().damping(18).stiffness(140);
 
 export const cardEntry = (index: number) =>
-  FadeInUp.delay(index * 100).springify().damping(14).stiffness(120);
+  FadeInUp.delay(index * 80).springify().damping(16).stiffness(110);
 
-export const scaleEntry = ZoomIn.springify().damping(12).stiffness(180);
+export const scaleEntry = ZoomIn.springify().damping(14).stiffness(160);
 
-export const layoutTransition = Layout.springify().damping(15).stiffness(120);
+export const layoutTransition = Layout.springify().damping(18).stiffness(110);
+
+export const fadeEntry = (delay: number = 0) =>
+  FadeIn.delay(delay).duration(350);
+
+export const slideEntry = (index: number) =>
+  FadeInRight.delay(index * 60).springify().damping(18).stiffness(140);
 
 export {
   withSpring, withTiming, withDelay, withSequence, withRepeat,

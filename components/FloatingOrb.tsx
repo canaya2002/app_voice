@@ -22,8 +22,8 @@ interface FloatingOrbProps {
 }
 
 export default function FloatingOrb({
-  size = 200,
-  color = COLORS.primary,
+  size = 220,
+  color = COLORS.primaryLight,
   top,
   left,
   right,
@@ -38,19 +38,19 @@ export default function FloatingOrb({
       orbDelay,
       withRepeat(
         withSequence(
-          withTiming(-15, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(15, { duration: 3000, easing: Easing.inOut(Easing.sin) })
+          withTiming(-18, { duration: 3500, easing: Easing.inOut(Easing.sin) }),
+          withTiming(18, { duration: 3500, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
         true
       )
     );
     translateX.value = withDelay(
-      orbDelay + 500,
+      orbDelay + 600,
       withRepeat(
         withSequence(
-          withTiming(-10, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(10, { duration: 4000, easing: Easing.inOut(Easing.sin) })
+          withTiming(-12, { duration: 4500, easing: Easing.inOut(Easing.sin) }),
+          withTiming(12, { duration: 4500, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
         true
@@ -60,8 +60,8 @@ export default function FloatingOrb({
       orbDelay + 300,
       withRepeat(
         withSequence(
-          withTiming(1.05, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1.0, { duration: 5000, easing: Easing.inOut(Easing.sin) })
+          withTiming(1.08, { duration: 5500, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.0, { duration: 5500, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
         true
@@ -92,9 +92,9 @@ export default function FloatingOrb({
       pointerEvents="none"
     >
       <LinearGradient
-        colors={[color + '14', color + '06', 'transparent']}
+        colors={[color + '18', color + '0A', color + '04', 'transparent']}
         style={styles.gradient}
-        start={{ x: 0.5, y: 0.5 }}
+        start={{ x: 0.5, y: 0.3 }}
         end={{ x: 1, y: 1 }}
       />
     </Animated.View>

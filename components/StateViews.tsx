@@ -42,7 +42,9 @@ export function ErrorState({ type, message, onRetry, retrying }: ErrorStateProps
   const config = ERROR_CONFIG[type];
   return (
     <View style={styles.center}>
-      <Ionicons name={config.icon} size={48} color={COLORS.error} />
+      <View style={styles.errorIconCircle}>
+        <Ionicons name={config.icon} size={44} color={COLORS.error} />
+      </View>
       <Text style={styles.title}>{config.title}</Text>
       <Text style={styles.subtitle}>{message || config.message}</Text>
       {onRetry && (
@@ -72,7 +74,7 @@ export function PremiumGate({ mode, modeLabel, onUpgrade }: PremiumGateProps) {
   return (
     <View style={styles.center}>
       <View style={styles.lockCircle}>
-        <Ionicons name="lock-closed" size={28} color={COLORS.primaryLight} />
+        <Ionicons name="lock-closed" size={26} color={COLORS.primaryLight} />
       </View>
       <Text style={styles.title}>{modeLabel}</Text>
       <Text style={styles.subtitle}>Disponible en Premium</Text>
@@ -115,11 +117,11 @@ export function DailyLimitBanner({ onUpgrade }: DailyLimitBannerProps) {
 export function NoteDetailSkeleton() {
   return (
     <View style={styles.skeletonContainer}>
-      <View style={[styles.skeletonBlock, { width: '60%', height: 24 }]} />
-      <View style={[styles.skeletonBlock, { width: '40%', height: 16, marginTop: 8 }]} />
-      <View style={[styles.skeletonBlock, { width: '100%', height: 60, marginTop: 24 }]} />
-      <View style={[styles.skeletonBlock, { width: '100%', height: 120, marginTop: 16 }]} />
-      <View style={[styles.skeletonBlock, { width: '80%', height: 16, marginTop: 16 }]} />
+      <View style={[styles.skeletonBlock, { width: '60%', height: 26 }]} />
+      <View style={[styles.skeletonBlock, { width: '40%', height: 16, marginTop: 10 }]} />
+      <View style={[styles.skeletonBlock, { width: '100%', height: 64, marginTop: 28 }]} />
+      <View style={[styles.skeletonBlock, { width: '100%', height: 130, marginTop: 18 }]} />
+      <View style={[styles.skeletonBlock, { width: '80%', height: 16, marginTop: 18 }]} />
     </View>
   );
 }
@@ -132,31 +134,47 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    padding: 44,
     gap: 12,
   },
   title: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
     color: COLORS.textPrimary,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 14.5,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
+  },
+
+  // -- Error icon circle
+  errorIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.error + '0A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.error + '12',
   },
 
   // -- Retry button
   retryBtn: {
-    marginTop: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 12,
+    marginTop: 10,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 14,
     backgroundColor: COLORS.surfaceAlt,
     minWidth: 120,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
   retryText: {
     fontSize: 14,
@@ -166,23 +184,30 @@ const styles = StyleSheet.create({
 
   // -- Lock / Premium gate
   lockCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primaryLight + '20',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.primaryLight + '18',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight + '20',
   },
   upgradeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
+    gap: 7,
+    marginTop: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 14,
     backgroundColor: COLORS.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   upgradeBtnText: {
     fontSize: 14,
@@ -195,28 +220,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.warning + '15',
-    borderRadius: 14,
-    padding: 14,
+    backgroundColor: COLORS.warning + '12',
+    borderRadius: 16,
+    padding: 16,
     marginHorizontal: 16,
     marginVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.warning + '18',
   },
   bannerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   bannerText: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '500',
     color: COLORS.textPrimary,
     flex: 1,
   },
   bannerBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
     backgroundColor: COLORS.primary,
   },
   bannerBtnText: {
@@ -231,6 +258,6 @@ const styles = StyleSheet.create({
   },
   skeletonBlock: {
     backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 8,
+    borderRadius: 10,
   },
 });

@@ -41,18 +41,18 @@ export default function EmptyState({
   useEffect(() => {
     pulseScale.value = withRepeat(
       withSequence(
-        withTiming(1.08, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.06, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
       true,
     );
     floatY.value = withDelay(
-      1000,
+      800,
       withRepeat(
         withSequence(
-          withTiming(-6, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+          withTiming(-8, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
         ),
         -1,
         true,
@@ -67,16 +67,18 @@ export default function EmptyState({
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.iconCircle, iconAnimStyle]}>
-        <Ionicons name={icon} size={48} color={COLORS.primaryLight} />
+        <View style={styles.iconInner}>
+          <Ionicons name={icon} size={44} color={COLORS.primaryLight} />
+        </View>
       </Animated.View>
-      <Animated.Text entering={FadeInDown.delay(200).springify().damping(14)} style={styles.title}>
+      <Animated.Text entering={FadeInDown.delay(200).springify().damping(16)} style={styles.title}>
         {title}
       </Animated.Text>
-      <Animated.Text entering={FadeInDown.delay(300).springify().damping(14)} style={styles.message}>
+      <Animated.Text entering={FadeInDown.delay(300).springify().damping(16)} style={styles.message}>
         {message}
       </Animated.Text>
       {actionLabel && onAction ? (
-        <Animated.View entering={FadeInUp.delay(400).springify().damping(14)}>
+        <Animated.View entering={FadeInUp.delay(400).springify().damping(16)}>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => {
@@ -102,42 +104,54 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: COLORS.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  iconInner: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primaryPale,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '700',
     color: COLORS.textPrimary,
     marginBottom: 10,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   message: {
     fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 23,
   },
   actionButton: {
-    marginTop: 24,
+    marginTop: 28,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: COLORS.primaryDark,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    paddingHorizontal: 32,
+    paddingVertical: 15,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
   },
   actionText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
+    letterSpacing: -0.2,
   },
 });
