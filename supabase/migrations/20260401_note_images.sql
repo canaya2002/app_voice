@@ -2,7 +2,7 @@
 -- Sythio — Note images support
 -- ==========================================================================
 
-BEGIN;
+BEGIN; 
 
 -- Add images column to notes (array of storage paths)
 ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb;

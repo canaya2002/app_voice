@@ -153,6 +153,16 @@
 
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://oewjbeqwihhzuvbsfctf.supabase.co" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>
+      // Theme: prevent flash of wrong theme on load
+      (function(){
+        var t = localStorage.getItem('sythio-theme');
+        if (t === 'light') document.documentElement.classList.add('light');
+        else if (!t && window.matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.classList.add('light');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
+import LandingPage from './components/LandingPage';
+import SettingsPage from './components/SettingsPage';
+import { logPlatformSession, getSubscriptionDetails } from './lib/subscription';
 
 // ── Types (mirror mobile app) ───────────────────────────────────────────────
 
@@ -99,7 +102,7 @@ const TESTIMONIALS = [
 
 // ── Auth Page ────────────────────────────────────────────────────────────────
 
-function AuthPage({ onAuth }: { onAuth: () => void }) {
+function AuthPage({ onAuth, onBack }: { onAuth: () => void; onBack?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -123,6 +126,11 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
     <div className="auth-page-full">
       <div className="auth-left">
         <div className="auth-card">
+          {onBack && (
+            <button onClick={onBack} style={{ background: 'none', color: 'var(--text2)', fontSize: 14, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
+              ← Volver
+            </button>
+          )}
           <h1 className="auth-title">Sythio</h1>
           <p className="auth-subtitle">{isRegister ? 'Crea tu cuenta' : 'Inicia sesión para ver tus notas'}</p>
           {error && <div className="auth-error">{error}</div>}
@@ -198,6 +206,13 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
 function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const toggleTheme = () => {
+    document.documentElement.classList.toggle('light');
+    localStorage.setItem('sythio-theme',
+      document.documentElement.classList.contains('light') ? 'light' : 'dark'
+    );
+  };
+
   return (
     <nav className="nav">
       <div className="nav-inner">
@@ -205,7 +220,9 @@ function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
         <div className="nav-right">
           <Link to="/workspaces" className="nav-link" title="Workspaces">👥 Workspaces</Link>
           <Link to="/integrations" className="nav-link" title="Integraciones">⚡ Integraciones</Link>
+          <Link to="/settings" className="nav-link" title="Configuración">⚙️</Link>
           <Link to="/trash" className="nav-link" title="Papelera">🗑️</Link>
+          <button className="theme-toggle" onClick={toggleTheme} title="Cambiar tema" aria-label="Toggle theme">◐</button>
           <span className="nav-email">{email}</span>
           <button className="btn-logout" onClick={onLogout}>Cerrar sesión</button>
         </div>
@@ -259,8 +276,8 @@ function Dashboard() {
       <div className="dashboard-header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1>Mis notas</h1>
-            <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} procesadas</p>
+            <h1>Biblioteca</h1>
+            <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} · Organizadas y listas</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {selectMode ? (
@@ -308,7 +325,7 @@ function Dashboard() {
       )}
 
       <div className="search-bar">
-        <input className="search-input" placeholder="Buscar notas..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="search-input" placeholder="Buscar por título, contenido o tema..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="filters">
@@ -319,9 +336,9 @@ function Dashboard() {
 
       {filtered.length === 0 ? (
         <div className="empty">
-          <div className="empty-icon">🎤</div>
-          <h3>{search ? 'Sin resultados' : 'No hay notas aún'}</h3>
-          <p>{search ? 'Intenta otra búsqueda.' : 'Graba tu primer audio en la app móvil.'}</p>
+          <div className="empty-icon">📄</div>
+          <h3>{search ? 'Sin resultados' : 'Tu biblioteca está lista'}</h3>
+          <p>{search ? 'Intenta con otros términos o ajusta los filtros.' : 'Aquí aparecerán tus notas procesadas — listas para revisar, organizar y exportar.'}</p>
         </div>
       ) : (
         <div className="note-list">
@@ -1473,15 +1490,42 @@ function IntegrationsPage() {
   );
 }
 
+// ── Theme initialization (no flash) ─────────────────────────────────────────
+
+function initTheme() {
+  const saved = localStorage.getItem('sythio-theme');
+  if (saved === 'light') {
+    document.documentElement.classList.add('light');
+  } else if (saved === 'dark') {
+    document.documentElement.classList.remove('light');
+  } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+    document.documentElement.classList.add('light');
+  }
+}
+
 // ── Root App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAuth, setShowAuth] = useState(false);
+  const [platformBanner, setPlatformBanner] = useState<string | null>(null);
 
   useEffect(() => {
+    initTheme();
     supabase.auth.getSession().then(({ data: { session: s } }) => { setSession(s); setLoading(false); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      // Log platform session and check for cross-platform subscription on login
+      if (s?.user?.id) {
+        logPlatformSession(s.user.id).catch(() => {});
+        getSubscriptionDetails(s.user.id).then(sub => {
+          if (sub.plan !== 'free' && sub.platform && sub.platform !== 'web') {
+            setPlatformBanner(sub.platform);
+          }
+        }).catch(() => {});
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -1493,20 +1537,41 @@ export default function App() {
         {/* Public shared note route - no auth required */}
         <Route path="/shared/:token" element={<SharedNotePage />} />
 
-        {/* Auth-protected routes */}
+        {/* All other routes */}
         <Route path="*" element={
-          !session ? <AuthPage onAuth={() => {}} /> : (
+          session ? (
             <div className="app">
-              <Nav email={session.user.email ?? ''} onLogout={() => supabase.auth.signOut()} />
+              <Nav email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} />
+              {platformBanner && (
+                <div className="container" style={{ paddingTop: 16 }}>
+                  <div style={{
+                    padding: '14px 20px', borderRadius: 'var(--radius)',
+                    background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+                    display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: 'var(--text2)',
+                  }}>
+                    <span style={{ fontSize: 18 }}>{platformBanner === 'ios' ? '📱' : '🤖'}</span>
+                    <span>
+                      Tienes una suscripcion activa via <strong>{platformBanner === 'ios' ? 'App Store' : 'Google Play'}</strong>.
+                      Tu plan Pro esta activo. Para administrar tu suscripcion, hazlo desde tu {platformBanner === 'ios' ? 'iPhone' : 'dispositivo Android'}.
+                    </span>
+                    <button onClick={() => setPlatformBanner(null)} style={{ background: 'none', color: 'var(--text3)', fontSize: 18, marginLeft: 'auto', flexShrink: 0 }}>✕</button>
+                  </div>
+                </div>
+              )}
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/note/:id" element={<NoteDetail />} />
                 <Route path="/trash" element={<TrashPage />} />
                 <Route path="/workspaces" element={<WorkspacesPage />} />
                 <Route path="/integrations" element={<IntegrationsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>
+          ) : showAuth ? (
+            <AuthPage onAuth={() => {}} onBack={() => setShowAuth(false)} />
+          ) : (
+            <LandingPage onNavigateAuth={() => setShowAuth(true)} />
           )
         } />
       </Routes>
