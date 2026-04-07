@@ -237,14 +237,21 @@ export default function SettingsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                 <UpgradeCard
                   name="Premium"
-                  price="$15/mes"
-                  features={['Notas ilimitadas', 'Audio hasta 30 min', '8 modos de resultado', 'AI Chat', 'Exportar a todos los formatos']}
+                  price="$15/mo"
+                  features={['Unlimited notes', 'Audio up to 30 min', 'All 9 AI modes', 'AI Chat', 'Export all formats']}
                   featured
+                  onSelect={() => {
+                    // TODO: Replace with Stripe Checkout URL when configured
+                    window.open('https://sythio.com/pricing', '_blank');
+                  }}
                 />
                 <UpgradeCard
                   name="Enterprise"
                   price={t('settings.customPrice')}
-                  features={['Todo en Premium', 'Workspaces ilimitados', 'Panel de administrador', 'API access', 'Soporte prioritario', 'Miembros ilimitados']}
+                  features={['Everything in Premium', 'Unlimited workspaces', 'Admin dashboard', 'API access', 'Priority support', 'Unlimited members']}
+                  onSelect={() => {
+                    window.open('https://sythio.com/enterprise', '_blank');
+                  }}
                 />
               </div>
             </div>
@@ -348,8 +355,8 @@ function PlatformBanner({ platform }: { platform: string | null }) {
 }
 
 // ── Upgrade Card ────────────────────────────────────────────────────────
-function UpgradeCard({ name, price, features, featured }: {
-  name: string; price: string; features: string[]; featured?: boolean;
+function UpgradeCard({ name, price, features, featured, onSelect }: {
+  name: string; price: string; features: string[]; featured?: boolean; onSelect: () => void;
 }) {
   const { t } = useI18n();
   return (
@@ -370,7 +377,7 @@ function UpgradeCard({ name, price, features, featured }: {
           </li>
         ))}
       </ul>
-      <button className={`pricing-btn ${featured ? 'primary' : 'secondary'}`} style={{ width: '100%' }}>
+      <button className={`pricing-btn ${featured ? 'primary' : 'secondary'}`} style={{ width: '100%' }} onClick={onSelect}>
         {t('settings.choose')} {name}
       </button>
     </div>

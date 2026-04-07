@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 import SettingsPage from './components/SettingsPage';
@@ -498,39 +498,95 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
   );
 }
 
-// ── Nav ──────────────────────────────────────────────────────────────────────
+// ── Sidebar Navigation ──────────────────────────────────────────────────────
 
-function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
+function Sidebar({ email, onLogout, folders }: { email: string; onLogout: () => void; folders: Folder[] }) {
   const { t, lang, setLang } = useI18n();
-  const toggleTheme = () => {
-    document.documentElement.classList.toggle('light');
-    localStorage.setItem('sythio-theme',
-      document.documentElement.classList.contains('light') ? 'light' : 'dark'
-    );
-  };
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
+  const close = () => setMobileOpen(false);
 
   return (
-    <nav className="nav">
-      <div className="nav-inner">
-        <Link to="/" className="nav-brand">Sythio</Link>
-        <div className="nav-right">
-          <Link to="/workspaces" className="nav-link" title={t('nav.workspaces')}>👥<span className="nav-link-text"> {t('nav.workspaces')}</span></Link>
-          <Link to="/integrations" className="nav-link" title={t('nav.integrations')}>⚡<span className="nav-link-text"> {t('nav.integrations')}</span></Link>
-          <Link to="/settings" className="nav-link" title={t('nav.settings')}>⚙️</Link>
-          <Link to="/trash" className="nav-link" title={t('nav.trash')}>🗑️</Link>
-          <button className="theme-toggle" onClick={toggleTheme} title={t('nav.theme')} aria-label="Toggle theme">◐</button>
-          <div className="nav-lang">
-            <select value={lang} onChange={e => setLang(e.target.value as Lang)} className="nav-lang-select">
-              {(Object.keys(LANG_LABELS) as Lang[]).map(l => (
-                <option key={l} value={l}>{LANG_LABELS[l]}</option>
-              ))}
-            </select>
-          </div>
-          <span className="nav-email">{email}</span>
-          <button className="btn-logout" onClick={onLogout}>{t('nav.logout')}</button>
+    <>
+      <button className="mobile-menu-btn" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      {mobileOpen && <div className="sidebar-overlay" onClick={close} />}
+      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+        {/* Brand */}
+        <Link to="/" className="sb-brand" onClick={close}>
+          <img src="/images/favicon.png" alt="Sythio" className="sb-logo" />
+          <span>Sythio</span>
+        </Link>
+
+        {/* Main */}
+        <div className="sb-group">
+          <Link to="/" className={`sb-item ${pathname === '/' ? 'active' : ''}`} onClick={close}>
+            <span className="sb-icon sb-icon-lib">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+            </span>
+            <span>{t('dash.library')}</span>
+          </Link>
+          <Link to="/workspaces" className={`sb-item ${pathname === '/workspaces' ? 'active' : ''}`} onClick={close}>
+            <span className="sb-icon sb-icon-ws">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span>{t('nav.workspaces')}</span>
+          </Link>
+          <Link to="/integrations" className={`sb-item ${pathname === '/integrations' ? 'active' : ''}`} onClick={close}>
+            <span className="sb-icon sb-icon-int">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </span>
+            <span>{t('nav.integrations')}</span>
+          </Link>
         </div>
-      </div>
-    </nav>
+
+        {/* Folders */}
+        {folders.length > 0 && (
+          <div className="sb-group">
+            <span className="sb-label">Folders</span>
+            {folders.map(f => (
+              <Link key={f.id} to={`/?folder=${f.id}`} className="sb-item sb-folder" onClick={close}>
+                <span className="sb-folder-dot" style={{ background: f.color, boxShadow: `0 0 6px ${f.color}44` }} />
+                <span>{f.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        {/* Bottom */}
+        <div className="sb-group sb-group-bottom">
+          <Link to="/trash" className={`sb-item ${pathname === '/trash' ? 'active' : ''}`} onClick={close}>
+            <span className="sb-icon sb-icon-trash">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </span>
+            <span>{t('nav.trash')}</span>
+          </Link>
+          <Link to="/settings" className={`sb-item ${pathname === '/settings' ? 'active' : ''}`} onClick={close}>
+            <span className="sb-icon sb-icon-set">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </span>
+            <span>{t('nav.settings')}</span>
+          </Link>
+
+          <div className="sb-divider" />
+
+          <select value={lang} onChange={e => setLang(e.target.value as Lang)} className="sb-lang">
+            {(Object.keys(LANG_LABELS) as Lang[]).map(l => <option key={l} value={l}>{LANG_LABELS[l]}</option>)}
+          </select>
+
+          <div className="sb-user">
+            <div className="sb-avatar">{email[0]?.toUpperCase()}</div>
+            <div className="sb-user-info">
+              <span className="sb-email">{email}</span>
+              <button className="sb-logout" onClick={onLogout}>{t('nav.logout')}</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -1805,19 +1861,6 @@ function IntegrationsPage() {
   );
 }
 
-// ── Theme initialization (no flash) ─────────────────────────────────────────
-
-function initTheme() {
-  const saved = localStorage.getItem('sythio-theme');
-  if (saved === 'light') {
-    document.documentElement.classList.add('light');
-  } else if (saved === 'dark') {
-    document.documentElement.classList.remove('light');
-  } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-    document.documentElement.classList.add('light');
-  }
-}
-
 // ── Platform Banner (extracted so it can use useI18n inside provider) ────────
 
 function PlatformBannerUI({ platform, onDismiss }: { platform: string; onDismiss: () => void }) {
@@ -1846,15 +1889,16 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [platformBanner, setPlatformBanner] = useState<string | null>(null);
+  const [sidebarFolders, setSidebarFolders] = useState<Folder[]>([]);
 
   useEffect(() => {
-    initTheme();
     supabase.auth.getSession().then(({ data: { session: s } }) => { setSession(s); setLoading(false); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       // Log platform session and check for cross-platform subscription on login
       if (s?.user?.id) {
         logPlatformSession(s.user.id).catch(() => {});
+        Promise.resolve(supabase.from('folders').select('*').order('created_at')).then(({ data }) => { setSidebarFolders((data ?? []) as Folder[]); }).catch(() => {});
         getSubscriptionDetails(s.user.id).then(sub => {
           if (sub.plan !== 'free' && sub.platform && sub.platform !== 'web') {
             setPlatformBanner(sub.platform);
@@ -1878,20 +1922,22 @@ export default function App() {
         {/* All other routes */}
         <Route path="*" element={
           session ? (
-            <div className="app">
-              <Nav email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} />
-              {platformBanner && (
-                <PlatformBannerUI platform={platformBanner} onDismiss={() => setPlatformBanner(null)} />
-              )}
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/note/:id" element={<NoteDetail />} />
-                <Route path="/trash" element={<TrashPage />} />
-                <Route path="/workspaces" element={<WorkspacesPage />} />
-                <Route path="/integrations" element={<IntegrationsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+            <div className="app-layout">
+              <Sidebar email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} folders={sidebarFolders} />
+              <main className="app-main">
+                {platformBanner && (
+                  <PlatformBannerUI platform={platformBanner} onDismiss={() => setPlatformBanner(null)} />
+                )}
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/note/:id" element={<NoteDetail />} />
+                  <Route path="/trash" element={<TrashPage />} />
+                  <Route path="/workspaces" element={<WorkspacesPage />} />
+                  <Route path="/integrations" element={<IntegrationsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </main>
             </div>
           ) : (
             <AuthPage onAuth={() => {}} />

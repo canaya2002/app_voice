@@ -223,12 +223,6 @@
     <link rel="dns-prefetch" href="https://oewjbeqwihhzuvbsfctf.supabase.co" />
 
     <script>
-      // Theme: prevent flash of wrong theme on load
-      (function(){
-        var t = localStorage.getItem('sythio-theme');
-        if (t === 'light') document.documentElement.classList.add('light');
-        else if (!t && window.matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.classList.add('light');
-      })();
       // Lang: set html lang from saved preference
       (function(){
         var l = localStorage.getItem('sythio-lang');
