@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
+import { useToast } from '../App';
+import { useI18n } from '../i18n';
 import {
   getSubscriptionDetails,
   canManageSubscription,
@@ -13,6 +15,8 @@ import {
 
 // ── Settings Page ───────────────────────────────────────────────────────
 export default function SettingsPage() {
+  const { toast, showConfirm } = useToast();
+  const { t, lang } = useI18n();
   const [activeTab, setActiveTab] = useState<'profile' | 'subscription' | 'security'>('profile');
   const [profile, setProfile] = useState<{ email: string; display_name: string; avatar_url: string } | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
@@ -20,7 +24,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -47,15 +50,13 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async () => {
     setSaving(true);
-    setMessage('');
     const session = (await supabase.auth.getSession()).data.session;
     if (!session) return;
     const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', session.user.id);
     if (error) {
-      setMessage('Error al guardar');
+      toast(t('toast.saveError'), 'error');
     } else {
-      setMessage('Guardado');
-      setTimeout(() => setMessage(''), 2000);
+      toast(t('toast.profileSaved'));
     }
     setSaving(false);
   };
@@ -66,10 +67,41 @@ export default function SettingsPage() {
       redirectTo: window.location.origin,
     });
     if (error) {
-      setMessage('Error: ' + error.message);
+      toast(t('common.error') + ': ' + error.message, 'error');
     } else {
-      setMessage('Email de restablecimiento enviado a ' + profile.email);
+      toast(t('toast.resetSent') + ' ' + profile.email);
     }
+  };
+
+  const handleCancelSubscription = () => {
+    showConfirm(t('confirm.cancelSub'), async () => {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) return;
+      // RLS only allows SELECT on subscriptions — use edge function
+      const res = await supabase.functions.invoke('cancel-subscription', {
+        body: { user_id: session.user.id },
+      });
+      if (res.error) {
+        toast(t('toast.cancelError'), 'error');
+        return;
+      }
+      setSubscription(prev => prev ? { ...prev, status: 'cancelled' } : prev);
+      toast(t('toast.subCancelled'));
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    showConfirm(t('confirm.deleteAccount'), async () => {
+      // Use SECURITY DEFINER RPC — deletes auth.users which CASCADE deletes all related data
+      const { error } = await supabase.rpc('delete_user');
+      if (error) {
+        toast(t('toast.deleteError') + ' ' + error.message, 'error');
+        return;
+      }
+      toast(t('toast.accountDeleted'));
+      // Auth session is already invalidated by deleting from auth.users
+      await supabase.auth.signOut();
+    });
   };
 
   if (loading) return <div className="container"><div className="loading"><div className="spinner" /></div></div>;
@@ -77,8 +109,8 @@ export default function SettingsPage() {
   return (
     <div className="container">
       <div className="dashboard-header">
-        <h1>Configuracion</h1>
-        <p>Administra tu cuenta y suscripcion</p>
+        <h1>{t('settings.title')}</h1>
+        <p>{t('settings.subtitle')}</p>
       </div>
 
       {/* Tab navigation */}
@@ -89,7 +121,7 @@ export default function SettingsPage() {
             className={`mode-tab ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab === 'profile' ? '👤 Perfil' : tab === 'subscription' ? '💎 Suscripcion' : '🔒 Seguridad'}
+            {tab === 'profile' ? `👤 ${t('settings.profile')}` : tab === 'subscription' ? `💎 ${t('settings.subscription')}` : `🔒 ${t('settings.security')}`}
           </button>
         ))}
       </div>
@@ -98,21 +130,20 @@ export default function SettingsPage() {
       {activeTab === 'profile' && (
         <div>
           <div className="note-section">
-            <h2>Informacion del perfil</h2>
+            <h2>{t('settings.profileInfo')}</h2>
             <div className="note-section-content" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}>Email</label>
                 <input className="auth-input" style={{ marginBottom: 0, opacity: 0.6 }} value={profile?.email ?? ''} disabled />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}>Nombre</label>
-                <input className="auth-input" style={{ marginBottom: 0 }} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Tu nombre" />
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}>{t('settings.name')}</label>
+                <input className="auth-input" style={{ marginBottom: 0 }} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder={t('auth.yourName')} />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button className="action-btn" style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }} onClick={handleSaveProfile} disabled={saving}>
-                  {saving ? 'Guardando...' : 'Guardar cambios'}
+                  {saving ? t('settings.saving') : t('settings.saveChanges')}
                 </button>
-                {message && <span style={{ fontSize: 13, color: message.startsWith('Error') ? 'var(--error)' : 'var(--success)' }}>{message}</span>}
               </div>
             </div>
           </div>
@@ -120,7 +151,7 @@ export default function SettingsPage() {
           {/* Platform info */}
           {platforms.length > 1 && (
             <div className="note-section" style={{ marginTop: 24 }}>
-              <h2>Plataformas conectadas</h2>
+              <h2>{t('settings.platforms')}</h2>
               <div className="note-section-content">
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {platforms.map(p => (
@@ -130,7 +161,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 12 }}>
-                  Tu cuenta esta activa en estas plataformas. Tus notas se sincronizan automaticamente.
+                  {t('settings.platformsSync')}
                 </p>
               </div>
             </div>
@@ -143,7 +174,7 @@ export default function SettingsPage() {
         <div>
           {/* Current plan card */}
           <div className="note-section">
-            <h2>Tu plan actual</h2>
+            <h2>{t('settings.currentPlan')}</h2>
             <div className="note-section-content">
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <span style={{
@@ -154,27 +185,42 @@ export default function SettingsPage() {
                 </span>
                 {subscription.status === 'active' && (
                   <span className="note-badge" style={{ background: 'var(--success-pale)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                    Activo
+                    {t('settings.active')}
                   </span>
                 )}
                 {subscription.status === 'trial' && (
                   <span className="note-badge" style={{ background: 'var(--amber-pale)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.15)' }}>
-                    Periodo de prueba
+                    {t('settings.trial')}
                   </span>
                 )}
               </div>
 
               {subscription.platform && subscription.plan !== 'free' && (
                 <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 8 }}>
-                  Suscrito via <strong>{getPlatformLabel(subscription.platform)}</strong>
+                  {t('settings.subscribedVia')} <strong>{getPlatformLabel(subscription.platform)}</strong>
+                </p>
+              )}
+
+              {subscription.priceCents != null && subscription.plan !== 'free' && (
+                <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 4 }}>
+                  ${(subscription.priceCents / 100).toFixed(2)} USD/mes
+                  {subscription.plan === 'enterprise' && subscription.enterpriseMemberCount != null && (
+                    <span style={{ color: 'var(--text3)' }}> ({subscription.enterpriseMemberCount} miembros)</span>
+                  )}
                 </p>
               )}
 
               {subscription.currentPeriodEnd && (
                 <p style={{ fontSize: 13, color: 'var(--text3)' }}>
-                  {subscription.status === 'cancelled' ? 'Acceso hasta: ' : 'Proxima renovacion: '}
-                  {new Date(subscription.currentPeriodEnd).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {subscription.status === 'cancelled' ? t('settings.accessUntil') : t('settings.nextRenewal')}
+                  {new Date(subscription.currentPeriodEnd).toLocaleDateString(lang === 'en' ? 'en-US' : lang === 'it' ? 'it-IT' : lang === 'fr' ? 'fr-FR' : lang === 'pt' ? 'pt-BR' : 'es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </p>
+              )}
+
+              {subscription.plan === 'enterprise' && subscription.enterpriseOrgName && (
+                <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--amber-pale)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: 'var(--radius)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--amber)' }}>{t('settings.organization')}: {subscription.enterpriseOrgName}</span>
+                </div>
               )}
             </div>
           </div>
@@ -187,18 +233,18 @@ export default function SettingsPage() {
           {/* Free user — show upgrade */}
           {subscription.plan === 'free' && (
             <div className="note-section" style={{ marginTop: 24 }}>
-              <h2>Mejorar tu plan</h2>
+              <h2>{t('settings.upgrade')}</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                 <UpgradeCard
-                  name="Pro"
-                  price="$7.99/mes"
-                  features={['Notas ilimitadas', 'Audio hasta 120 min', '8 modos de resultado', 'AI Chat', 'Exportar a todos los formatos']}
+                  name="Premium"
+                  price="$15/mes"
+                  features={['Notas ilimitadas', 'Audio hasta 30 min', '8 modos de resultado', 'AI Chat', 'Exportar a todos los formatos']}
                   featured
                 />
                 <UpgradeCard
                   name="Enterprise"
-                  price="$14.99/mes"
-                  features={['Todo en Pro', 'Workspaces ilimitados', 'Admin dashboard', 'API access', 'Soporte prioritario']}
+                  price={t('settings.customPrice')}
+                  features={['Todo en Premium', 'Workspaces ilimitados', 'Panel de administrador', 'API access', 'Soporte prioritario', 'Miembros ilimitados']}
                 />
               </div>
             </div>
@@ -207,12 +253,15 @@ export default function SettingsPage() {
           {/* Web subscription — can manage */}
           {subscription.plan !== 'free' && canManageSubscription(subscription) && (
             <div className="note-section" style={{ marginTop: 24 }}>
-              <h2>Administrar suscripcion</h2>
+              <h2>{t('settings.manageSub')}</h2>
               <div className="note-section-content" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <button className="action-btn">Cambiar plan</button>
-                <button className="action-btn" style={{ color: 'var(--error)', borderColor: 'rgba(239,68,68,0.3)' }}>
-                  Cancelar suscripcion
-                </button>
+                {subscription.status !== 'cancelled' ? (
+                  <button className="action-btn" style={{ color: 'var(--error)', borderColor: 'rgba(239,68,68,0.3)' }} onClick={handleCancelSubscription}>
+                    {t('settings.cancelSub')}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 13, color: 'var(--text3)', alignSelf: 'center' }}>{t('settings.cancelledNote')}</span>
+                )}
               </div>
             </div>
           )}
@@ -223,28 +272,27 @@ export default function SettingsPage() {
       {activeTab === 'security' && (
         <div>
           <div className="note-section">
-            <h2>Cambiar contrasena</h2>
+            <h2>{t('settings.changePassword')}</h2>
             <div className="note-section-content">
               <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 16 }}>
-                Te enviaremos un email con un link para restablecer tu contrasena. Funciona tanto para web como para la app movil.
+                {t('settings.passwordHint')}
               </p>
               <button className="action-btn" onClick={handlePasswordReset}>
-                Enviar email de restablecimiento
+                {t('settings.sendReset')}
               </button>
-              {message && <p style={{ fontSize: 13, color: 'var(--success)', marginTop: 12 }}>{message}</p>}
             </div>
           </div>
 
           <div className="note-section" style={{ marginTop: 24 }}>
-            <h2>Sesiones activas</h2>
+            <h2>{t('settings.activeSessions')}</h2>
             <div className="note-section-content">
               <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 12 }}>
-                Plataformas donde tu cuenta ha iniciado sesion:
+                {t('settings.sessionsHint')}
               </p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {(platforms.length > 0 ? platforms : ['web']).map(p => (
                   <span key={p} className="note-badge" style={{ padding: '8px 16px', fontSize: 13 }}>
-                    {p === 'ios' ? '📱 iOS' : p === 'android' ? '🤖 Android' : '🌐 Web'} — Activo
+                    {p === 'ios' ? '📱 iOS' : p === 'android' ? '🤖 Android' : '🌐 Web'} — {t('settings.active')}
                   </span>
                 ))}
               </div>
@@ -252,13 +300,13 @@ export default function SettingsPage() {
           </div>
 
           <div className="note-section" style={{ marginTop: 24 }}>
-            <h2>Eliminar cuenta</h2>
+            <h2>{t('settings.deleteAccount')}</h2>
             <div className="note-section-content">
               <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 16 }}>
-                Esta accion es permanente. Se eliminaran todas tus notas, transcripciones y datos de la cuenta en todas las plataformas.
+                {t('settings.deleteHint')}
               </p>
-              <button className="action-btn" style={{ color: 'var(--error)', borderColor: 'rgba(239,68,68,0.3)' }}>
-                Eliminar mi cuenta
+              <button className="action-btn" style={{ color: 'var(--error)', borderColor: 'rgba(239,68,68,0.3)' }} onClick={handleDeleteAccount}>
+                {t('settings.deleteMyAccount')}
               </button>
             </div>
           </div>
@@ -303,6 +351,7 @@ function PlatformBanner({ platform }: { platform: string | null }) {
 function UpgradeCard({ name, price, features, featured }: {
   name: string; price: string; features: string[]; featured?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div style={{
       padding: '28px 24px',
@@ -311,7 +360,7 @@ function UpgradeCard({ name, price, features, featured }: {
       border: featured ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
       boxShadow: featured ? 'var(--shadow-glow)' : 'var(--shadow-sm)',
     }}>
-      {featured && <div className="pricing-badge" style={{ marginBottom: 12 }}>Mas popular</div>}
+      {featured && <div className="pricing-badge" style={{ marginBottom: 12 }}>{t('settings.mostPopular')}</div>}
       <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{name}</h3>
       <p style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: -1, marginBottom: 20 }}>{price}</p>
       <ul style={{ listStyle: 'none', padding: 0, marginBottom: 24 }}>
@@ -322,7 +371,7 @@ function UpgradeCard({ name, price, features, featured }: {
         ))}
       </ul>
       <button className={`pricing-btn ${featured ? 'primary' : 'secondary'}`} style={{ width: '100%' }}>
-        Elegir {name}
+        {t('settings.choose')} {name}
       </button>
     </div>
   );

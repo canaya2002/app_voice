@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   created_at: string;
-  plan: 'free' | 'premium';
+  plan: 'free' | 'premium' | 'enterprise';
   daily_count: number;
   daily_audio_minutes: number;
   last_reset_date: string;

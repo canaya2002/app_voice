@@ -2,11 +2,14 @@ import { supabase } from '../supabase';
 
 // ── Types ───────────────────────────────────────────────────────────────
 export interface SubscriptionInfo {
-  plan: 'free' | 'pro' | 'team' | 'premium';
+  plan: 'free' | 'premium' | 'enterprise';
   platform: 'ios' | 'web' | 'android' | null;
   status: 'active' | 'trial' | 'cancelled' | 'expired' | null;
   currentPeriodEnd: string | null;
   canManageHere: boolean;
+  priceCents: number | null;
+  enterpriseOrgName: string | null;
+  enterpriseMemberCount: number | null;
 }
 
 // ── Get effective plan (calls Postgres function) ────────────────────────
@@ -33,7 +36,10 @@ export async function getSubscriptionDetails(userId: string): Promise<Subscripti
       platform: null,
       status: null,
       currentPeriodEnd: null,
-      canManageHere: true, // free users can upgrade from web
+      canManageHere: true,
+      priceCents: null,
+      enterpriseOrgName: null,
+      enterpriseMemberCount: null,
     };
   }
 
@@ -44,6 +50,9 @@ export async function getSubscriptionDetails(userId: string): Promise<Subscripti
     status: row.status as SubscriptionInfo['status'],
     currentPeriodEnd: row.current_period_end,
     canManageHere: row.can_manage_here ?? false,
+    priceCents: row.price_cents ?? null,
+    enterpriseOrgName: row.enterprise_org_name ?? null,
+    enterpriseMemberCount: row.enterprise_member_count ?? null,
   };
 }
 
@@ -110,8 +119,7 @@ export async function getUserPlatforms(userId: string): Promise<string[]> {
 // ── Plan display helpers ────────────────────────────────────────────────
 export function getPlanLabel(plan: string): string {
   switch (plan) {
-    case 'team': return 'Enterprise';
-    case 'pro': return 'Pro';
+    case 'enterprise': return 'Enterprise';
     case 'premium': return 'Premium';
     default: return 'Free';
   }
@@ -119,8 +127,7 @@ export function getPlanLabel(plan: string): string {
 
 export function getPlanColor(plan: string): string {
   switch (plan) {
-    case 'team': return 'var(--amber)';
-    case 'pro': return 'var(--accent)';
+    case 'enterprise': return 'var(--amber)';
     case 'premium': return 'var(--accent)';
     default: return 'var(--text3)';
   }

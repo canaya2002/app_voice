@@ -71,7 +71,7 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
 
     if (result.success) {
       hapticPurchaseSuccess();
-      setPlan('premium');
+      setPlan('premium', 'ios');
       showToast('¡Bienvenido a Sythio Premium!', 'success');
       onClose();
     } else if (result.cancelled) {
@@ -90,7 +90,7 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
 
     if (result.success) {
       hapticPurchaseSuccess();
-      setPlan('premium');
+      setPlan('premium', 'ios');
       showToast('¡Suscripción restaurada!', 'success');
       onClose();
     } else if (result.error) {

@@ -1,10 +1,86 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
-import LandingPage from './components/LandingPage';
 import SettingsPage from './components/SettingsPage';
 import { logPlatformSession, getSubscriptionDetails } from './lib/subscription';
+import { I18nProvider, useI18n, LANG_LABELS, type Lang } from './i18n';
+
+// ── Toast System ────────────────────────────────────────────────────────────
+
+type ToastType = 'success' | 'error' | 'info';
+interface Toast { id: number; message: string; type: ToastType }
+
+const ToastContext = createContext<{
+  toast: (message: string, type?: ToastType) => void;
+  showConfirm: (message: string, onConfirm: () => void | Promise<void>) => void;
+}>({ toast: () => {}, showConfirm: () => {} });
+
+export const useToast = () => useContext(ToastContext);
+
+function ToastProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void | Promise<void> } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const nextId = useRef(0);
+
+  const toast = useCallback((message: string, type: ToastType = 'success') => {
+    const id = nextId.current++;
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
+
+  const showConfirm = useCallback((message: string, onConfirm: () => void | Promise<void>) => {
+    setConfirmState({ message, onConfirm });
+    setConfirmLoading(false);
+  }, []);
+
+  const handleConfirm = async () => {
+    if (!confirmState) return;
+    setConfirmLoading(true);
+    try {
+      await confirmState.onConfirm();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('common.errorAction'), 'error');
+    } finally {
+      setConfirmState(null);
+      setConfirmLoading(false);
+    }
+  };
+
+  return (
+    <ToastContext.Provider value={{ toast, showConfirm }}>
+      {children}
+      {/* Toast container */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast toast-${t.type}`}>
+            <span className="toast-icon">{t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : 'ℹ'}</span>
+            <span>{t.message}</span>
+          </div>
+        ))}
+      </div>
+      {/* Confirm modal */}
+      {confirmState && (
+        <div className="modal-overlay" onClick={() => !confirmLoading && setConfirmState(null)}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
+            <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+              <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.7 }}>⚠️</div>
+              <p style={{ fontSize: 15, lineHeight: 1.65, color: 'var(--text)', marginBottom: 28 }}>{confirmState.message}</p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="action-btn" style={{ flex: 1, justifyContent: 'center', height: 44 }} onClick={() => setConfirmState(null)} disabled={confirmLoading}>{t('common.cancel')}</button>
+                <button className="action-btn" style={{ flex: 1, justifyContent: 'center', height: 44, background: 'var(--error)', color: '#fff', borderColor: 'var(--error)' }} onClick={handleConfirm} disabled={confirmLoading}>
+                  {confirmLoading ? t('common.processing') : t('common.confirm')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </ToastContext.Provider>
+  );
+}
 
 // ── Types (mirror mobile app) ───────────────────────────────────────────────
 
@@ -55,12 +131,15 @@ function formatTimestamp(s: number) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-const MODE_LABELS: Record<string, string> = {
-  summary: 'Resumen', tasks: 'Tareas', action_plan: 'Plan de acción',
-  clean_text: 'Texto limpio', executive_report: 'Reporte ejecutivo',
-  ready_message: 'Mensaje listo', study: 'Estudio', ideas: 'Ideas',
-  outline: 'Outline',
-};
+function getModeLabel(mode: string, t: (k: string, fb?: string) => string): string {
+  const map: Record<string, string> = {
+    summary: 'mode.summary', tasks: 'mode.tasks', action_plan: 'mode.actionPlan',
+    clean_text: 'mode.cleanText', executive_report: 'mode.execReport',
+    ready_message: 'mode.readyMsg', study: 'mode.study', ideas: 'mode.ideas',
+    outline: 'mode.outline',
+  };
+  return t(map[mode] ?? mode, mode);
+}
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -89,7 +168,7 @@ ${note.tasks?.length ? `<h2>Tareas</h2><ul>${note.tasks.map(t => `<li>${escapeHt
   a.click(); URL.revokeObjectURL(url);
 }
 
-// ── Testimonials ─────────────────────────────────────────────────────────────
+// ── Testimonials (used in AuthPage + SharedNotePage) ─────────────────────────
 
 const TESTIMONIALS = [
   { name: 'María G.', role: 'Directora de Operaciones', text: 'Mis reuniones ahora tienen actas automáticas. Sythio me ahorra 2 horas por semana.', stars: 5 },
@@ -102,103 +181,319 @@ const TESTIMONIALS = [
 
 // ── Auth Page ────────────────────────────────────────────────────────────────
 
-function AuthPage({ onAuth, onBack }: { onAuth: () => void; onBack?: () => void }) {
+// ── Login Demo: recording → transcription → AI summary (big, visible) ───────
+function LoginDemo() {
+  const { t } = useI18n();
+  const [step, setStep] = useState(0);
+  const [typedChars, setTypedChars] = useState(0);
+  const [aiLines, setAiLines] = useState(0);
+  const transcript = t('demo.login.transcript');
+  const summaryLines = [
+    t('demo.login.sum1'),
+    t('demo.login.sum2'),
+    t('demo.login.sum3'),
+  ];
+  const tasks = [
+    { text: t('demo.login.task1'), who: 'María', color: '#818cf8' },
+    { text: t('demo.login.task2'), who: 'Carlos', color: '#34d399' },
+    { text: t('demo.login.task3'), who: 'Ana', color: '#fbbf24' },
+  ];
+
+  useEffect(() => {
+    let s = 0;
+    const durations = [3000, 4000, 3000, 4000];
+    let timeout: ReturnType<typeof setTimeout>;
+    const run = () => {
+      timeout = setTimeout(() => { s = (s + 1) % 4; setStep(s); run(); }, durations[s]);
+    };
+    run();
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Typing effect for step 1
+  useEffect(() => {
+    if (step === 0) { setTypedChars(0); setAiLines(0); return; }
+    if (step === 1) {
+      let i = 0;
+      const len = transcript.length;
+      const timer = setInterval(() => { i += 2; setTypedChars(Math.min(i, len)); if (i >= len) clearInterval(timer); }, 25);
+      return () => clearInterval(timer);
+    }
+    setTypedChars(transcript.length);
+  }, [step, transcript]);
+
+  // AI lines appearing one by one in step 2-3
+  useEffect(() => {
+    if (step < 2) { setAiLines(0); return; }
+    if (step === 2) {
+      let i = 0;
+      const t = setInterval(() => { i++; setAiLines(i); if (i >= 6) clearInterval(t); }, 400);
+      return () => clearInterval(t);
+    }
+    setAiLines(6);
+  }, [step]);
+
+  const barPct = [15, 45, 80, 100][step];
+
+  return (
+    <div className="demo-scene">
+      <h3 className="demo-scene-title">{t('demo.login.title')}</h3>
+      <p className="demo-scene-sub">{t('demo.login.sub')}</p>
+      <div className="demo-window">
+        <div className="demo-titlebar"><div className="demo-dot r"/><div className="demo-dot y"/><div className="demo-dot g"/><span className="demo-titlebar-text">Sythio</span></div>
+        <div className="demo-body">
+          {/* Step 0: Big animated waveform */}
+          <div className="demo-waveform" style={{ height: step === 0 ? 48 : 0, opacity: step === 0 ? 1 : 0 }}>
+            {Array.from({ length: 40 }).map((_, i) => (
+              <div key={i} className="demo-wave-bar" style={{ animationDelay: `${i * 0.04}s`, height: `${10 + Math.random() * 30}px`, animationDuration: `${0.4 + Math.random() * 0.6}s` }} />
+            ))}
+          </div>
+          {step === 0 && <div className="demo-rec-badge"><span className="demo-rec-dot" />REC 00:{String(Math.floor(Date.now() / 1000) % 60).padStart(2, '0')}</div>}
+
+          {/* Step 1: Transcript typing */}
+          {step >= 1 && (
+            <div className="demo-transcript">
+              <span className="demo-transcript-label">{t('demo.login.liveTranscript')}</span>
+              <p className="demo-transcript-text">{transcript.slice(0, typedChars)}{step === 1 && <span className="demo-cursor">|</span>}</p>
+            </div>
+          )}
+
+          {/* Step 2-3: AI Result building up line by line */}
+          {step >= 2 && (
+            <div className="demo-ai-result">
+              {aiLines >= 1 && <div className="demo-ai-section">
+                <span className="demo-ai-tag">{t('demo.login.summary')}</span>
+                {summaryLines.map((line, i) => aiLines >= i + 1 && <p key={i} className="demo-ai-text">{line}</p>)}
+              </div>}
+              {aiLines >= 4 && <div className="demo-ai-section">
+                <span className="demo-ai-tag">Tareas ({tasks.length})</span>
+                {tasks.map((t, i) => aiLines >= 4 + i && (
+                  <div key={i} className="demo-ai-task">
+                    <span className="demo-check" style={{ color: t.color }}>●</span>
+                    <span>{t.text}</span>
+                    <span className="demo-task-who" style={{ background: t.color + '22', color: t.color }}>{t.who}</span>
+                  </div>
+                ))}
+              </div>}
+            </div>
+          )}
+
+          {/* Progress always visible */}
+          <div className="demo-progress"><div className="demo-progress-fill" style={{ width: `${barPct}%` }}/></div>
+          <div className="demo-status">
+            <span style={{ fontSize: 16 }}>{['🎤', '📝', '✨', '✅'][step]}</span>
+            <span>{[t('demo.login.step0'), t('demo.login.step1'), t('demo.login.step2'), t('demo.login.step3')][step]}</span>
+          </div>
+        </div>
+      </div>
+      <div className="demo-stats">
+        <div className="demo-stat"><strong>90+</strong><span>{t('demo.login.languages')}</span></div>
+        <div className="demo-stat-sep"/>
+        <div className="demo-stat"><strong>8</strong><span>{t('demo.login.aiModes')}</span></div>
+        <div className="demo-stat-sep"/>
+        <div className="demo-stat"><strong>4.8 ★</strong><span>rating</span></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Register Demo: voice idea → speakers → modes → export ───────────────────
+function RegisterDemo() {
+  const { t } = useI18n();
+  const [step, setStep] = useState(0);
+  const [visibleSpeakers, setVisibleSpeakers] = useState(0);
+  const [showModes, setShowModes] = useState(0);
+  const speakers = [
+    { name: t('demo.reg.you'), color: '#818cf8', text: t('demo.reg.speaker1') },
+    { name: 'Sythio IA', color: '#34d399', text: t('demo.reg.speaker2') },
+  ];
+  const modes = [
+    { icon: '📝', label: t('mode.summary'), color: '#818cf8' },
+    { icon: '✅', label: t('mode.tasks'), color: '#34d399' },
+    { icon: '📊', label: t('mode.actionPlan'), color: '#fbbf24' },
+    { icon: '📄', label: t('mode.execReport'), color: '#f87171' },
+  ];
+
+  useEffect(() => {
+    let s = 0;
+    const durations = [3000, 3500, 4000, 3500];
+    let timeout: ReturnType<typeof setTimeout>;
+    const run = () => {
+      timeout = setTimeout(() => { s = (s + 1) % 4; setStep(s); run(); }, durations[s]);
+    };
+    run();
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    setVisibleSpeakers(0);
+    setShowModes(0);
+    if (step === 0) {
+      let i = 0;
+      const t = setInterval(() => { i++; setVisibleSpeakers(i); if (i >= 2) clearInterval(t); }, 800);
+      return () => clearInterval(t);
+    }
+    if (step === 1) { setVisibleSpeakers(2); }
+    if (step >= 2) {
+      setVisibleSpeakers(2);
+      let i = 0;
+      const t = setInterval(() => { i++; setShowModes(i); if (i >= modes.length) clearInterval(t); }, 500);
+      return () => clearInterval(t);
+    }
+  }, [step]);
+
+  const barPct = [20, 50, 80, 100][step];
+
+  return (
+    <div className="demo-scene">
+      <h3 className="demo-scene-title">{t('demo.reg.title')}</h3>
+      <p className="demo-scene-sub">{t('demo.reg.sub')}</p>
+      <div className="demo-window">
+        <div className="demo-titlebar"><div className="demo-dot r"/><div className="demo-dot y"/><div className="demo-dot g"/><span className="demo-titlebar-text">Sythio</span></div>
+        <div className="demo-body">
+          {/* Speaker conversation appearing */}
+          <div className="demo-speakers">
+            {speakers.map((sp, i) => (
+              <div key={i} className={`demo-speaker-row ${visibleSpeakers > i ? 'visible' : ''}`}>
+                <div className="demo-speaker-avatar" style={{ background: sp.color }}>{sp.name[0]}</div>
+                <div className="demo-speaker-bubble" style={{ borderColor: sp.color + '33' }}>
+                  <span className="demo-speaker-name" style={{ color: sp.color }}>{sp.name}</span>
+                  <p>{sp.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Modes grid appearing */}
+          {step >= 2 && (
+            <div className="demo-modes-grid">
+              {modes.map((m, i) => (
+                <div key={i} className={`demo-mode-card ${showModes > i ? 'visible' : ''}`} style={{ borderColor: m.color + '33' }}>
+                  <span style={{ fontSize: 20 }}>{m.icon}</span>
+                  <span style={{ color: m.color, fontWeight: 700, fontSize: 11 }}>{m.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Export */}
+          {step >= 3 && (
+            <div className="demo-export">
+              <div className="demo-export-file">
+                <span className="demo-file-icon">📄</span>
+                <div><strong>{t('demo.reg.filename')}</strong><span>{t('demo.reg.fileMeta')}</span></div>
+                <span className="demo-export-check">✓</span>
+              </div>
+            </div>
+          )}
+
+          <div className="demo-progress"><div className="demo-progress-fill" style={{ width: `${barPct}%` }}/></div>
+          <div className="demo-status">
+            <span style={{ fontSize: 16 }}>{['🎙️', '👥', '✨', '📄'][step]}</span>
+            <span>{[t('demo.reg.step0'), t('demo.reg.step1'), t('demo.reg.step2'), t('demo.reg.step3')][step]}</span>
+          </div>
+        </div>
+      </div>
+      <div className="demo-stats">
+        <div className="demo-stat"><strong>12,400+</strong><span>{t('demo.reg.users')}</span></div>
+        <div className="demo-stat-sep"/>
+        <div className="demo-stat"><strong>850K+</strong><span>{t('demo.reg.notes')}</span></div>
+        <div className="demo-stat-sep"/>
+        <div className="demo-stat"><strong>4.8 ★</strong><span>rating</span></div>
+      </div>
+    </div>
+  );
+}
+
+function AuthPage({ onAuth }: { onAuth: () => void }) {
+  const { t, lang, setLang } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isRegister, setIsRegister] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const handleToggle = () => {
+    setTransitioning(true);
+    setTimeout(() => {
+      setIsRegister(!isRegister);
+      setError('');
+      setTransitioning(false);
+    }, 350);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     const { error: err } = isRegister
-      ? await supabase.auth.signUp({ email, password })
+      ? await supabase.auth.signUp({ email, password, options: { data: { display_name: name } } })
       : await supabase.auth.signInWithPassword({ email, password });
     if (err) { setError(err.message); setLoading(false); return; }
-    if (isRegister) { setError('Revisa tu correo para confirmar tu cuenta.'); setLoading(false); return; }
+    if (isRegister) { setError(t('auth.checkEmail')); setLoading(false); return; }
     onAuth();
     setLoading(false);
   };
 
-  return (
-    <div className="auth-page-full">
-      <div className="auth-left">
-        <div className="auth-card">
-          {onBack && (
-            <button onClick={onBack} style={{ background: 'none', color: 'var(--text2)', fontSize: 14, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
-              ← Volver
-            </button>
-          )}
-          <h1 className="auth-title">Sythio</h1>
-          <p className="auth-subtitle">{isRegister ? 'Crea tu cuenta' : 'Inicia sesión para ver tus notas'}</p>
-          {error && <div className="auth-error">{error}</div>}
-          <form onSubmit={handleSubmit}>
-            <input className="auth-input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-            <input className="auth-input" type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
-            <button className="auth-btn" type="submit" disabled={loading}>
-              {loading ? 'Cargando...' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}
-            </button>
-          </form>
-          {/* Social login */}
-          <div className="auth-social">
-            <div className="auth-divider"><span>o continúa con</span></div>
-            <div className="auth-social-row">
-              <button className="auth-social-btn" onClick={async () => {
-                const { error: e } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-                if (e) setError(e.message);
-              }}>
-                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92A8.78 8.78 0 0 0 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3.01-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>
-                Google
-              </button>
-              <button className="auth-social-btn" onClick={async () => {
-                const { error: e } = await supabase.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: window.location.origin } });
-                if (e) setError(e.message);
-              }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><path d="M14.94 15.26c-.68.98-1.42 1.96-2.54 1.98-1.12.02-1.48-.66-2.76-.66s-1.68.64-2.74.68c-1.08.04-1.9-1.06-2.58-2.04C3 13.16 1.94 9.52 3.34 7.06a4.18 4.18 0 0 1 3.52-2.14c1.08-.02 2.1.72 2.76.72.66 0 1.9-.9 3.2-.76.54.02 2.08.22 3.06 1.66-.08.04-1.82 1.06-1.8 3.18.02 2.52 2.22 3.36 2.24 3.38-.02.04-.34 1.2-1.38 2.16zM11.14.56c.76-.92 2.02-1.6 3.08-1.64.14 1.2-.34 2.38-1.08 3.26-.74.88-1.96 1.56-3.14 1.46-.16-1.16.4-2.38 1.14-3.08z"/></svg>
-                Apple
-              </button>
-            </div>
-          </div>
+  const handleOAuth = async (provider: 'google' | 'apple') => {
+    const { error: e } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+    if (e) setError(e.message);
+  };
 
-          <p className="auth-link">
-            {isRegister ? '¿Ya tienes cuenta? ' : '¿No tienes cuenta? '}
-            <a href="#" onClick={e => { e.preventDefault(); setIsRegister(!isRegister); setError(''); }}>
-              {isRegister ? 'Inicia sesión' : 'Regístrate'}
-            </a>
-          </p>
-
-          {/* Rating badge */}
-          <div className="auth-rating">
-            <div className="auth-stars">{'★'.repeat(5)}</div>
-            <span>4.8 de 5 — 347 valoraciones</span>
+  const formContent = (
+    <div className="auth-form-panel">
+      <div className="auth-card">
+        <img src="/images/icon.png" alt="Sythio" className="auth-logo" />
+        <h1 className="auth-title">{isRegister ? t('auth.createAccount') : t('auth.welcome')}</h1>
+        <p className="auth-subtitle">{isRegister ? t('auth.freeNoCc') : t('auth.accessNotes')}</p>
+        {error && <div className="auth-error">{error}</div>}
+        <form onSubmit={handleSubmit}>
+          {isRegister && <input className="auth-input" type="text" placeholder={t('auth.yourName')} value={name} onChange={e => setName(e.target.value)} />}
+          <input className="auth-input" type="email" placeholder={t('auth.email')} value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="auth-input" type="password" placeholder={isRegister ? t('auth.passwordMin') : t('auth.password')} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+          <button className="auth-btn" type="submit" disabled={loading}>
+            {loading ? '...' : isRegister ? t('auth.createFree') : t('auth.signIn')}
+          </button>
+        </form>
+        <div className="auth-social">
+          <div className="auth-divider"><span>{t('auth.orContinue')}</span></div>
+          <div className="auth-social-row">
+            <button className="auth-social-btn" onClick={() => handleOAuth('google')}>
+              <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92A8.78 8.78 0 0 0 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3.01-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>
+              Google
+            </button>
+            <button className="auth-social-btn" onClick={() => handleOAuth('apple')}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="#000"><path d="M14.94 15.26c-.68.98-1.42 1.96-2.54 1.98-1.12.02-1.48-.66-2.76-.66s-1.68.64-2.74.68c-1.08.04-1.9-1.06-2.58-2.04C3 13.16 1.94 9.52 3.34 7.06a4.18 4.18 0 0 1 3.52-2.14c1.08-.02 2.1.72 2.76.72.66 0 1.9-.9 3.2-.76.54.02 2.08.22 3.06 1.66-.08.04-1.82 1.06-1.8 3.18.02 2.52 2.22 3.36 2.24 3.38-.02.04-.34 1.2-1.38 2.16zM11.14.56c.76-.92 2.02-1.6 3.08-1.64.14 1.2-.34 2.38-1.08 3.26-.74.88-1.96 1.56-3.14 1.46-.16-1.16.4-2.38 1.14-3.08z"/></svg>
+              Apple
+            </button>
           </div>
         </div>
-      </div>
-      <div className="auth-right">
-        <div className="auth-hero">
-          <h2>Tu voz, hecha acción</h2>
-          <p>Graba reuniones, ideas o clases y obtén resúmenes, tareas, reportes y más — todo con IA.</p>
-          <div className="auth-features">
-            <div className="auth-feature">🎤 <span>Transcripción en 90+ idiomas</span></div>
-            <div className="auth-feature">👥 <span>Detección de hablantes</span></div>
-            <div className="auth-feature">📊 <span>8 modos: resumen, tareas, estudio...</span></div>
-            <div className="auth-feature">📄 <span>Exporta a PDF, Word, Excel, SRT</span></div>
-            <div className="auth-feature">🤖 <span>AI Chat: pregunta sobre tus notas</span></div>
-            <div className="auth-feature">🔗 <span>Comparte notas con un link</span></div>
-          </div>
-        </div>
-        <div className="auth-testimonials">
-          {TESTIMONIALS.slice(0, 3).map((t, i) => (
-            <div key={i} className="auth-testimonial">
-              <div className="testimonial-stars">{'★'.repeat(t.stars)}{'☆'.repeat(5 - t.stars)}</div>
-              <p className="testimonial-text">"{t.text}"</p>
-              <p className="testimonial-author">{t.name} — <span>{t.role}</span></p>
-            </div>
+        <p className="auth-link">
+          {isRegister ? t('auth.hasAccount') : t('auth.noAccount')}
+          <a href="#" onClick={e => { e.preventDefault(); handleToggle(); }}>{isRegister ? t('auth.signIn') : t('auth.signUpFree')}</a>
+        </p>
+        <div className="auth-lang-bar">
+          {(Object.entries(LANG_LABELS) as [Lang, string][]).map(([code, label]) => (
+            <button key={code} className={`auth-lang-btn ${lang === code ? 'active' : ''}`} onClick={() => setLang(code)}>
+              {label}
+            </button>
           ))}
         </div>
       </div>
+    </div>
+  );
+
+  const showcaseContent = (
+    <div className="auth-showcase">
+      {isRegister ? <RegisterDemo /> : <LoginDemo />}
+    </div>
+  );
+
+  return (
+    <div className={`auth-page ${transitioning ? 'auth-fade-out' : 'auth-fade-in'}`}>
+      {isRegister ? <>{showcaseContent}{formContent}</> : <>{formContent}{showcaseContent}</>}
     </div>
   );
 }
@@ -206,6 +501,7 @@ function AuthPage({ onAuth, onBack }: { onAuth: () => void; onBack?: () => void 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
 function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const { t, lang, setLang } = useI18n();
   const toggleTheme = () => {
     document.documentElement.classList.toggle('light');
     localStorage.setItem('sythio-theme',
@@ -218,13 +514,20 @@ function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
       <div className="nav-inner">
         <Link to="/" className="nav-brand">Sythio</Link>
         <div className="nav-right">
-          <Link to="/workspaces" className="nav-link" title="Workspaces">👥 Workspaces</Link>
-          <Link to="/integrations" className="nav-link" title="Integraciones">⚡ Integraciones</Link>
-          <Link to="/settings" className="nav-link" title="Configuración">⚙️</Link>
-          <Link to="/trash" className="nav-link" title="Papelera">🗑️</Link>
-          <button className="theme-toggle" onClick={toggleTheme} title="Cambiar tema" aria-label="Toggle theme">◐</button>
+          <Link to="/workspaces" className="nav-link" title={t('nav.workspaces')}>👥<span className="nav-link-text"> {t('nav.workspaces')}</span></Link>
+          <Link to="/integrations" className="nav-link" title={t('nav.integrations')}>⚡<span className="nav-link-text"> {t('nav.integrations')}</span></Link>
+          <Link to="/settings" className="nav-link" title={t('nav.settings')}>⚙️</Link>
+          <Link to="/trash" className="nav-link" title={t('nav.trash')}>🗑️</Link>
+          <button className="theme-toggle" onClick={toggleTheme} title={t('nav.theme')} aria-label="Toggle theme">◐</button>
+          <div className="nav-lang">
+            <select value={lang} onChange={e => setLang(e.target.value as Lang)} className="nav-lang-select">
+              {(Object.keys(LANG_LABELS) as Lang[]).map(l => (
+                <option key={l} value={l}>{LANG_LABELS[l]}</option>
+              ))}
+            </select>
+          </div>
           <span className="nav-email">{email}</span>
-          <button className="btn-logout" onClick={onLogout}>Cerrar sesión</button>
+          <button className="btn-logout" onClick={onLogout}>{t('nav.logout')}</button>
         </div>
       </div>
     </nav>
@@ -234,6 +537,8 @@ function Nav({ email, onLogout }: { email: string; onLogout: () => void }) {
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard() {
+  const { t } = useI18n();
+  const { showConfirm } = useToast();
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,8 +555,7 @@ function Dashboard() {
     ]).then(([notesRes, foldersRes]) => {
       setNotes((notesRes.data ?? []) as Note[]);
       setFolders((foldersRes.data ?? []) as Folder[]);
-      setLoading(false);
-    });
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const filtered = notes.filter(n => {
@@ -276,8 +580,8 @@ function Dashboard() {
       <div className="dashboard-header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1>Biblioteca</h1>
-            <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} · Organizadas y listas</p>
+            <h1>{t('dash.library')}</h1>
+            <p>{notes.length} {notes.length === 1 ? t('dash.note') : t('dash.notes')} · {t('dash.organized')}</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {selectMode ? (
@@ -286,17 +590,18 @@ function Dashboard() {
                   const sel = notes.filter(n => selected.has(n.id));
                   sel.forEach(n => downloadDOCX(n));
                   setSelectMode(false); setSelected(new Set());
-                }} disabled={selected.size === 0}>📥 Exportar {selected.size}</button>
-                <button className="action-btn" onClick={async () => {
-                  if (!confirm(`¿Eliminar ${selected.size} notas?`)) return;
-                  for (const nId of selected) await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', nId);
-                  setNotes(prev => prev.filter(n => !selected.has(n.id)));
-                  setSelectMode(false); setSelected(new Set());
-                }} disabled={selected.size === 0} style={{ color: 'var(--error)' }}>🗑️ Eliminar {selected.size}</button>
-                <button className="action-btn" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>✕ Cancelar</button>
+                }} disabled={selected.size === 0}>📥 {t('dash.export')} {selected.size}</button>
+                <button className="action-btn" onClick={() => {
+                  showConfirm(`${t('common.delete')} ${selected.size} ${t('dash.notes')}?`, async () => {
+                    for (const nId of selected) await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', nId);
+                    setNotes(prev => prev.filter(n => !selected.has(n.id)));
+                    setSelectMode(false); setSelected(new Set());
+                  });
+                }} disabled={selected.size === 0} style={{ color: 'var(--error)' }}>🗑️ {t('common.delete')} {selected.size}</button>
+                <button className="action-btn" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>✕ {t('common.cancel')}</button>
               </>
             ) : (
-              <button className="action-btn" onClick={() => setSelectMode(true)}>☑️ Seleccionar</button>
+              <button className="action-btn" onClick={() => setSelectMode(true)}>☑️ {t('dash.select')}</button>
             )}
           </div>
         </div>
@@ -309,7 +614,7 @@ function Dashboard() {
             className={`folder-chip ${!selectedFolder ? 'active' : ''}`}
             onClick={() => setSelectedFolder(null)}
           >
-            Todas
+            {t('dash.allFolders')}
           </button>
           {folders.map(f => (
             <button
@@ -325,11 +630,11 @@ function Dashboard() {
       )}
 
       <div className="search-bar">
-        <input className="search-input" placeholder="Buscar por título, contenido o tema..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="search-input" placeholder={t('dash.search')} value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="filters">
-        {[['all','Todas'],['meeting','Reuniones'],['tasks','Tareas'],['ideas','Ideas'],['conversations','Conversaciones']].map(([id, label]) => (
+        {[['all',t('dash.all')],['meeting',t('dash.meetings')],['tasks',t('dash.tasks')],['ideas',t('dash.ideas')],['conversations',t('dash.conversations')]].map(([id, label]) => (
           <button key={id} className={`filter-chip ${filter === id ? 'active' : ''}`} onClick={() => setFilter(id)}>{label}</button>
         ))}
       </div>
@@ -337,8 +642,8 @@ function Dashboard() {
       {filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">📄</div>
-          <h3>{search ? 'Sin resultados' : 'Tu biblioteca está lista'}</h3>
-          <p>{search ? 'Intenta con otros términos o ajusta los filtros.' : 'Aquí aparecerán tus notas procesadas — listas para revisar, organizar y exportar.'}</p>
+          <h3>{search ? t('dash.noResults') : t('dash.libraryReady')}</h3>
+          <p>{search ? t('dash.noResultsHint') : t('dash.emptyHint')}</p>
         </div>
       ) : (
         <div className="note-list">
@@ -360,13 +665,11 @@ function Dashboard() {
                 <div className="note-meta">
                   <span>{formatDate(note.created_at)}</span>
                   <span>{formatDuration(note.audio_duration)}</span>
-                  {note.is_conversation && <span className="note-badge">👥 {note.speakers_detected} hablantes</span>}
+                  {note.is_conversation && <span className="note-badge">👥 {note.speakers_detected} {t('dash.speakers')}</span>}
                   {note.template && <span className="note-badge">{note.template}</span>}
-                  {note.folder_id && folders.find(f => f.id === note.folder_id) && (
-                    <span className="note-badge" style={{ borderLeft: `3px solid ${folders.find(f => f.id === note.folder_id)!.color}` }}>
-                      {folders.find(f => f.id === note.folder_id)!.name}
-                    </span>
-                  )}
+                  {(() => { const fl = note.folder_id ? folders.find(f => f.id === note.folder_id) : null; return fl ? (
+                    <span className="note-badge" style={{ borderLeft: `3px solid ${fl.color}` }}>{fl.name}</span>
+                  ) : null; })()}
                 </div>
               </Link>
             </div>
@@ -380,6 +683,8 @@ function Dashboard() {
 // ── Trash Page ───────────────────────────────────────────────────────────────
 
 function TrashPage() {
+  const { t } = useI18n();
+  const { showConfirm } = useToast();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -400,10 +705,11 @@ function TrashPage() {
     setNotes(prev => prev.filter(n => n.id !== id));
   };
 
-  const handlePermanentDelete = async (id: string) => {
-    if (!confirm('¿Eliminar permanentemente? Esta acción no se puede deshacer.')) return;
-    await supabase.from('notes').delete().eq('id', id);
-    setNotes(prev => prev.filter(n => n.id !== id));
+  const handlePermanentDelete = (id: string) => {
+    showConfirm(t('trash.permDelete'), async () => {
+      await supabase.from('notes').delete().eq('id', id);
+      setNotes(prev => prev.filter(n => n.id !== id));
+    });
   };
 
   if (loading) return <div className="container"><div className="loading"><div className="spinner" /></div></div>;
@@ -411,16 +717,16 @@ function TrashPage() {
   return (
     <div className="container">
       <div className="dashboard-header">
-        <h1>🗑️ Papelera</h1>
-        <p>{notes.length} {notes.length === 1 ? 'nota' : 'notas'} · Se eliminan automáticamente después de 30 días</p>
+        <h1>🗑️ {t('trash.title')}</h1>
+        <p>{notes.length} {notes.length === 1 ? t('dash.note') : t('dash.notes')} · {t('trash.autoDelete')}</p>
       </div>
-      <p style={{ marginBottom: 20 }}><Link to="/">← Volver al inicio</Link></p>
+      <p style={{ marginBottom: 20 }}><Link to="/">{t('trash.backHome')}</Link></p>
 
       {notes.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">🗑️</div>
-          <h3>Papelera vacía</h3>
-          <p>Las notas eliminadas aparecen aquí por 30 días.</p>
+          <h3>{t('trash.empty')}</h3>
+          <p>{t('trash.emptyHint')}</p>
         </div>
       ) : (
         <div className="note-list">
@@ -428,11 +734,11 @@ function TrashPage() {
             <div key={note.id} className="trash-card">
               <div className="trash-info">
                 <h3>{note.title}</h3>
-                <p>Eliminada el {note.deleted_at ? formatDate(note.deleted_at) : ''}</p>
+                <p>{t('trash.deletedOn')} {note.deleted_at ? formatDate(note.deleted_at) : ''}</p>
               </div>
               <div className="trash-actions">
-                <button className="btn-restore" onClick={() => handleRestore(note.id)}>Restaurar</button>
-                <button className="btn-perm-delete" onClick={() => handlePermanentDelete(note.id)}>Eliminar</button>
+                <button className="btn-restore" onClick={() => handleRestore(note.id)}>{t('trash.restore')}</button>
+                <button className="btn-perm-delete" onClick={() => handlePermanentDelete(note.id)}>{t('trash.delete')}</button>
               </div>
             </div>
           ))}
@@ -445,8 +751,10 @@ function TrashPage() {
 // ── Note Detail ──────────────────────────────────────────────────────────────
 
 function NoteDetail() {
+  const { t } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { toast, showConfirm } = useToast();
   const [note, setNote] = useState<Note | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [modeResults, setModeResults] = useState<ModeResult[]>([]);
@@ -486,12 +794,11 @@ function NoteDetail() {
       setFolders((foldersRes.data ?? []) as Folder[]);
       setHighlights(((noteRes.data as any)?.highlights as number[]) ?? []);
       setNoteImages(((noteRes.data as any)?.images as string[]) ?? []);
-      setLoading(false);
-    });
+    }).catch(() => {}).finally(() => setLoading(false));
     // Fetch comments
-    supabase.from('comments').select('*').eq('note_id', id).order('created_at').then(({ data }) => {
+    Promise.resolve(supabase.from('comments').select('*').eq('note_id', id).order('created_at')).then(({ data }) => {
       setComments((data ?? []) as any[]);
-    });
+    }).catch(() => {});
   }, [id]);
 
   const handleSaveTitle = useCallback(async () => {
@@ -515,16 +822,18 @@ function NoteDetail() {
     setNote(prev => prev ? { ...prev, folder_id: folderId } : prev);
   }, [id]);
 
-  const handleSoftDelete = useCallback(async () => {
-    if (!id || !confirm('¿Mover esta nota a la papelera?')) return;
-    await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-    navigate('/');
-  }, [id, navigate]);
+  const handleSoftDelete = useCallback(() => {
+    if (!id) return;
+    showConfirm(t('note.moveTrash'), async () => {
+      await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      navigate('/');
+    });
+  }, [id, navigate, showConfirm]);
 
   const handleCopy = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
-    alert('Copiado al portapapeles');
-  }, []);
+    toast(t('common.copied'));
+  }, [toast]);
 
   const handleDownloadTxt = useCallback(() => {
     if (!note) return;
@@ -577,16 +886,16 @@ function NoteDetail() {
       }
       const url = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(url);
-      alert('Link copiado al portapapeles');
+      toast(t('common.linkCopied'));
     } catch {
-      alert('Error al generar link');
+      toast(t('common.error'), 'error');
     } finally {
       setShareLoading(false);
     }
-  }, [note, id]);
+  }, [note, id, toast]);
 
   if (loading) return <div className="container"><div className="loading"><div className="spinner" /></div></div>;
-  if (!note) return <div className="container"><div className="empty"><h3>Nota no encontrada</h3><p><a href="#" onClick={e => { e.preventDefault(); navigate('/'); }}>Volver</a></p></div></div>;
+  if (!note) return <div className="container"><div className="empty"><h3>{t('note.notFound')}</h3><p><a href="#" onClick={e => { e.preventDefault(); navigate('/'); }}>{t('common.back')}</a></p></div></div>;
 
   const activeModeResult = modeResults.find(r => r.mode === activeMode);
   const availableModes = [note.primary_mode, ...modeResults.map(r => r.mode)].filter((m, i, a) => a.indexOf(m) === i);
@@ -595,8 +904,8 @@ function NoteDetail() {
     <div className="container">
       <div className="note-detail">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <a href="#" className="note-back" onClick={e => { e.preventDefault(); navigate('/'); }} style={{ margin: 0 }}>← Volver</a>
-          <button className="action-btn" onClick={handleSoftDelete} style={{ color: 'var(--error)', borderColor: 'rgba(255,59,48,0.3)' }}>🗑️ Papelera</button>
+          <a href="#" className="note-back" onClick={e => { e.preventDefault(); navigate('/'); }} style={{ margin: 0 }}>{t('note.back')}</a>
+          <button className="action-btn" onClick={handleSoftDelete} style={{ color: 'var(--error)', borderColor: 'rgba(255,59,48,0.3)' }}>🗑️ {t('note.trash')}</button>
         </div>
 
         {/* Editable title */}
@@ -610,8 +919,8 @@ function NoteDetail() {
               onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setEditingTitle(false); }}
               style={{ flex: 1, fontSize: 22, fontWeight: 700 }}
             />
-            <button className="action-btn" onClick={handleSaveTitle}>Guardar</button>
-            <button className="action-btn" onClick={() => setEditingTitle(false)}>Cancelar</button>
+            <button className="action-btn" onClick={handleSaveTitle}>{t('note.save')}</button>
+            <button className="action-btn" onClick={() => setEditingTitle(false)}>{t('note.cancel')}</button>
           </div>
         ) : (
           <h1 onClick={() => { setTitleDraft(note.title); setEditingTitle(true); }} className="editable-title" title="Click para editar">
@@ -621,7 +930,7 @@ function NoteDetail() {
 
         <div className="meta">
           {formatDate(note.created_at)} · {formatDuration(note.audio_duration)}
-          {note.is_conversation && ` · ${note.speakers_detected} hablantes`}
+          {note.is_conversation && ` · ${note.speakers_detected} ${t('dash.speakers')}`}
           {note.template && ` · ${note.template}`}
         </div>
 
@@ -632,7 +941,7 @@ function NoteDetail() {
             value={note.folder_id ?? ''}
             onChange={e => handleMoveToFolder(e.target.value || null)}
           >
-            <option value="">📁 Sin carpeta</option>
+            <option value="">📁 {t('note.noFolder')}</option>
             {folders.map(f => (
               <option key={f.id} value={f.id}>📁 {f.name}</option>
             ))}
@@ -641,33 +950,33 @@ function NoteDetail() {
 
         <div className="actions-bar">
           <button className="action-btn" onClick={handleShareLink} disabled={shareLoading}>
-            🔗 {shareLoading ? 'Generando...' : 'Copiar link'}
+            🔗 {shareLoading ? t('note.generating') : t('note.copyLink')}
           </button>
-          <button className="action-btn" onClick={() => handleCopy(note.summary || note.transcript)}>📋 Copiar resumen</button>
+          <button className="action-btn" onClick={() => handleCopy(note.summary || note.transcript)}>📋 {t('note.copySummary')}</button>
           <button className="action-btn" onClick={handleDownloadTxt}>📄 TXT</button>
           <button className="action-btn" onClick={() => downloadDOCX(note)}>📝 Word</button>
           {note.segments?.length > 0 && <button className="action-btn" onClick={handleDownloadSrt}>🎬 SRT</button>}
-          <button className="action-btn" onClick={() => handleCopy(note.transcript)}>📝 Transcripción</button>
+          <button className="action-btn" onClick={() => handleCopy(note.transcript)}>📝 {t('note.transcript')}</button>
           <button className="action-btn" onClick={async () => {
             const session = (await supabase.auth.getSession()).data.session;
             if (!session) return;
             const { data: memberships } = await supabase.from('workspace_members').select('workspace_id').eq('user_id', session.user.id);
-            if (!memberships?.length) { alert('No tienes workspaces. Crea uno desde Workspaces.'); return; }
+            if (!memberships?.length) { toast(t('toast.noWorkspaces'), 'info'); return; }
             const wsIds = memberships.map(m => m.workspace_id);
             const { data: wsList } = await supabase.from('workspaces').select('id, name').in('id', wsIds);
             const { data: chList } = await supabase.from('channels').select('id, name, workspace_id').in('workspace_id', wsIds);
             const mapped = (chList || []).map(ch => ({ id: ch.id, name: ch.name, workspace_name: (wsList || []).find(w => w.id === ch.workspace_id)?.name || '' }));
-            if (mapped.length === 0) { alert('No hay canales en tus workspaces. Crea uno primero.'); return; }
+            if (mapped.length === 0) { toast(t('toast.noChannels'), 'info'); return; }
             setWsChannels(mapped);
             setShowChannelShare(true);
-          }}>📢 Canal</button>
+          }}>📢 {t('note.channel')}</button>
         </div>
 
         {/* Channel share dropdown */}
         {showChannelShare && wsChannels.length > 0 && (
           <div className="share-banner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>Compartir a canal</span>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{t('note.shareToChannel')}</span>
               <button onClick={() => setShowChannelShare(false)} style={{ background: 'none', fontSize: 16, color: 'var(--text3)' }}>×</button>
             </div>
             {wsChannels.map(ch => (
@@ -675,9 +984,9 @@ function NoteDetail() {
                 const session = (await supabase.auth.getSession()).data.session;
                 if (!session) return;
                 const { error } = await supabase.from('channel_notes').insert({ channel_id: ch.id, note_id: id, shared_by: session.user.id });
-                if (error?.code === '23505') alert('Ya está compartida en ese canal');
-                else if (error) alert('Error: ' + error.message);
-                else { alert(`Compartida en #${ch.name}`); setShowChannelShare(false); }
+                if (error?.code === '23505') toast(t('toast.alreadyShared'), 'info');
+                else if (error) toast(t('common.error') + ': ' + error.message, 'error');
+                else { toast(`${t('toast.sharedIn')} #${ch.name}`); setShowChannelShare(false); }
               }}>
                 #{ch.name} <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 4 }}>{ch.workspace_name}</span>
               </button>
@@ -688,11 +997,11 @@ function NoteDetail() {
         {/* Share link banner */}
         {note.share_token && (
           <div className="share-banner">
-            <span>🔗 Link público activo</span>
+            <span>🔗 {t('note.publicLink')}</span>
             <button onClick={() => {
               navigator.clipboard.writeText(`${window.location.origin}/shared/${note.share_token}`);
-              alert('Link copiado');
-            }}>Copiar</button>
+              toast(t('common.linkCopied'));
+            }}>{t('note.copy')}</button>
           </div>
         )}
 
@@ -701,7 +1010,7 @@ function NoteDetail() {
           <div className="mode-tabs">
             {availableModes.map(mode => (
               <button key={mode} className={`mode-tab ${activeMode === mode ? 'active' : ''}`} onClick={() => setActiveMode(mode)}>
-                {MODE_LABELS[mode] ?? mode}
+                {getModeLabel(mode, t)}
               </button>
             ))}
           </div>
@@ -717,7 +1026,7 @@ function NoteDetail() {
         {/* Speaker rename section */}
         {note.is_conversation && note.speakers?.length > 1 && (
           <div className="note-section">
-            <h2>Hablantes <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)' }}>— click para renombrar</span></h2>
+            <h2>{t('note.speakers')} <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)' }}>{t('note.speakersRename')}</span></h2>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {note.speakers.map(sp => (
                 editingSpeaker === sp.id ? (
@@ -748,7 +1057,7 @@ function NoteDetail() {
 
         {/* Images */}
         <div className="note-section">
-          <h2>Imágenes ({noteImages.length})</h2>
+          <h2>{t('note.images')} ({noteImages.length})</h2>
           <div className="note-images">
             {noteImages.map((path, idx) => (
               <div key={idx} className="note-image-wrap">
@@ -779,16 +1088,16 @@ function NoteDetail() {
                 setUploadingImage(false);
                 e.target.value = '';
               }} />
-              {uploadingImage ? '...' : '+ Imagen'}
+              {uploadingImage ? '...' : t('note.addImage')}
             </label>
           </div>
         </div>
 
         {/* Comments */}
         <div className="note-section">
-          <h2>Comentarios ({comments.length})</h2>
+          <h2>{t('note.comments')} ({comments.length})</h2>
           <div className="comments-section">
-            {comments.length === 0 && <p className="comments-empty">Sin comentarios aún. Sé el primero en comentar.</p>}
+            {comments.length === 0 && <p className="comments-empty">{t('note.noComments')}</p>}
             {comments.map(c => (
               <div key={c.id} className="comment-card">
                 <div className="comment-header">
@@ -805,7 +1114,7 @@ function NoteDetail() {
             <div className="comment-input-row">
               <input
                 className="comment-input"
-                placeholder="Escribe un comentario..."
+                placeholder={t('note.writeComment')}
                 value={commentDraft}
                 onChange={e => setCommentDraft(e.target.value)}
                 onKeyDown={async e => {
@@ -830,14 +1139,14 @@ function NoteDetail() {
                 if (data) setComments(prev => [...prev, data as any]);
                 setCommentDraft('');
                 setPostingComment(false);
-              }}>Enviar</button>
+              }}>{t('note.send')}</button>
             </div>
           </div>
         </div>
 
         {/* Transcript */}
         <div className="note-section">
-          <h2>Transcripción completa</h2>
+          <h2>{t('note.fullTranscript')}</h2>
           {note.is_conversation && note.segments?.length > 0 ? (
             <div className="note-section-content">
               {note.segments.map((seg, i) => {
@@ -851,7 +1160,7 @@ function NoteDetail() {
                       setHighlights(newHL);
                       await supabase.from('notes').update({ highlights: newHL }).eq('id', id);
                     }}
-                    title="Click para resaltar"
+                    title={t('note.clickHighlight')}
                     style={{ cursor: 'pointer' }}
                   >
                     {isHighlighted && <span className="highlight-badge">★</span>}
@@ -874,6 +1183,8 @@ function NoteDetail() {
 // ── Shared Note (public, no auth) ────────────────────────────────────────────
 
 function SharedNotePage() {
+  const { t } = useI18n();
+  const { toast } = useToast();
   const { token } = useParams<{ token: string }>();
   const [note, setNote] = useState<Note | null>(null);
   const [modeResults, setModeResults] = useState<ModeResult[]>([]);
@@ -886,7 +1197,7 @@ function SharedNotePage() {
     supabase.functions.invoke('get-shared-note', { body: { token } })
       .then(({ data, error: err }) => {
         if (err || !data?.note) {
-          setError('Nota no encontrada o link expirado.');
+          setError(t('shared.notFound'));
           setLoading(false);
           return;
         }
@@ -901,7 +1212,7 @@ function SharedNotePage() {
   if (error || !note) return (
     <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 12 }}>
       <h2>Sythio</h2>
-      <p style={{ color: '#8A8F98' }}>{error || 'Nota no encontrada'}</p>
+      <p style={{ color: '#8A8F98' }}>{error || t('note.notFound')}</p>
     </div>
   );
 
@@ -911,18 +1222,18 @@ function SharedNotePage() {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 20px 60px' }}>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#8A8F98', textTransform: 'uppercase', letterSpacing: 1 }}>Compartido via Sythio</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#8A8F98', textTransform: 'uppercase', letterSpacing: 1 }}>{t('shared.via')}</span>
       </div>
 
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{note.title}</h1>
       <p style={{ fontSize: 13, color: '#8A8F98', marginBottom: 24 }}>
         {formatDate(note.created_at)} · {formatDuration(note.audio_duration)}
-        {note.is_conversation && ` · ${note.speakers_detected} hablantes`}
+        {note.is_conversation && ` · ${note.speakers_detected} ${t('dash.speakers')}`}
       </p>
 
       {/* Actions */}
       <div className="actions-bar">
-        <button className="action-btn" onClick={() => { navigator.clipboard.writeText(note.summary || note.transcript); alert('Copiado'); }}>📋 Copiar resumen</button>
+        <button className="action-btn" onClick={() => { navigator.clipboard.writeText(note.summary || note.transcript); toast(t('common.copied')); }}>📋 {t('note.copySummary')}</button>
         <button className="action-btn" onClick={() => downloadDOCX(note)}>📝 Word</button>
         <button className="action-btn" onClick={() => {
           const text = [`# ${note.title}`, `Fecha: ${formatDate(note.created_at)}`, '', '## Resumen', note.summary, '', '## Puntos clave', ...note.key_points.map(p => `- ${p}`), '', '## Tareas', ...note.tasks.map(t => `☐ ${t}`), '', '## Transcripción', note.transcript].join('\n');
@@ -937,7 +1248,7 @@ function SharedNotePage() {
         <div className="mode-tabs">
           {availableModes.map(mode => (
             <button key={mode} className={`mode-tab ${activeMode === mode ? 'active' : ''}`} onClick={() => setActiveMode(mode)}>
-              {MODE_LABELS[mode] ?? mode}
+              {getModeLabel(mode, t)}
             </button>
           ))}
         </div>
@@ -950,7 +1261,7 @@ function SharedNotePage() {
       ) : null}
 
       <div className="note-section">
-        <h2>Transcripción completa</h2>
+        <h2>{t('note.fullTranscript')}</h2>
         {note.is_conversation && note.segments?.length > 0 ? (
           <div className="note-section-content">
             {note.segments.map((seg, i) => {
@@ -967,13 +1278,13 @@ function SharedNotePage() {
       {/* CTA + Social Proof Footer */}
       <div className="shared-footer">
         <div className="shared-cta">
-          <h3>Hecho con Sythio</h3>
-          <p>Transforma tus grabaciones de voz en resúmenes, tareas, reportes y más con IA.</p>
+          <h3>{t('shared.madeWith')}</h3>
+          <p>{t('shared.cta')}</p>
           <div className="shared-rating">
             <span className="shared-stars">★★★★★</span>
             <span>4.8/5 — 347 valoraciones</span>
           </div>
-          <a href="https://sythio.com" className="shared-cta-btn">Prueba Sythio gratis</a>
+          <a href="https://sythio.com" className="shared-cta-btn">{t('shared.tryFree')}</a>
         </div>
         <div className="shared-testimonials">
           {TESTIMONIALS.slice(0, 2).map((t, i) => (
@@ -991,6 +1302,7 @@ function SharedNotePage() {
 // ── Mode Result View ─────────────────────────────────────────────────────────
 
 function ModeResultView({ mode, result }: { mode: string; result: Record<string, unknown> }) {
+  const { t } = useI18n();
   const s = (v: unknown) => typeof v === 'string' ? v : '';
   const arr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
   const rArr = (v: unknown): Record<string, unknown>[] => Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null) : [];
@@ -999,40 +1311,40 @@ function ModeResultView({ mode, result }: { mode: string; result: Record<string,
     case 'summary':
       return (
         <>
-          {s(result.summary) && <div className="note-section"><h2>Resumen</h2><div className="note-section-content">{s(result.summary)}</div></div>}
-          {arr(result.key_points).length > 0 && <div className="note-section"><h2>Puntos clave</h2><ul className="note-list-items">{arr(result.key_points).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
+          {s(result.summary) && <div className="note-section"><h2>{t('mode.summary')}</h2><div className="note-section-content">{s(result.summary)}</div></div>}
+          {arr(result.key_points).length > 0 && <div className="note-section"><h2>{t('modeResult.keyPoints')}</h2><ul className="note-list-items">{arr(result.key_points).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
         </>
       );
     case 'tasks':
       return (
-        <div className="note-section"><h2>Tareas</h2>
+        <div className="note-section"><h2>{t('mode.tasks')}</h2>
           <ul className="note-list-items">{rArr(result.tasks).map((t,i) => <li key={i}>☐ {s(t.text) || s(t.task)} {s(t.priority) && <span className="note-badge">{s(t.priority)}</span>} {s(t.responsible) && <span style={{color:'var(--text3)', fontSize:12}}>→ {s(t.responsible)}</span>}</li>)}</ul>
         </div>
       );
     case 'action_plan':
       return (
         <>
-          {s(result.objective) && <div className="note-section"><h2>Objetivo</h2><div className="note-section-content">{s(result.objective)}</div></div>}
-          {rArr(result.steps).length > 0 && <div className="note-section"><h2>Pasos</h2><ul className="note-list-items">{rArr(result.steps).map((st,i) => <li key={i}><strong>{i+1}.</strong> {s(st.action) || s(st.step)}</li>)}</ul></div>}
+          {s(result.objective) && <div className="note-section"><h2>{t('modeResult.objective')}</h2><div className="note-section-content">{s(result.objective)}</div></div>}
+          {rArr(result.steps).length > 0 && <div className="note-section"><h2>{t('modeResult.steps')}</h2><ul className="note-list-items">{rArr(result.steps).map((st,i) => <li key={i}><strong>{i+1}.</strong> {s(st.action) || s(st.step)}</li>)}</ul></div>}
         </>
       );
     case 'clean_text':
-      return <div className="note-section"><h2>Texto limpio</h2><div className="note-section-content" style={{whiteSpace:'pre-wrap'}}>{s(result.clean_text)}</div></div>;
+      return <div className="note-section"><h2>{t('mode.cleanText')}</h2><div className="note-section-content" style={{whiteSpace:'pre-wrap'}}>{s(result.clean_text)}</div></div>;
     case 'executive_report':
       return (
         <>
-          {s(result.executive_summary) && <div className="note-section"><h2>Resumen ejecutivo</h2><div className="note-section-content">{s(result.executive_summary)}</div></div>}
-          {arr(result.key_points).length > 0 && <div className="note-section"><h2>Puntos clave</h2><ul className="note-list-items">{arr(result.key_points).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
-          {arr(result.next_steps).length > 0 && <div className="note-section"><h2>Próximos pasos</h2><ul className="note-list-items">{arr(result.next_steps).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
+          {s(result.executive_summary) && <div className="note-section"><h2>{t('modeResult.execSummary')}</h2><div className="note-section-content">{s(result.executive_summary)}</div></div>}
+          {arr(result.key_points).length > 0 && <div className="note-section"><h2>{t('modeResult.keyPoints')}</h2><ul className="note-list-items">{arr(result.key_points).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
+          {arr(result.next_steps).length > 0 && <div className="note-section"><h2>{t('modeResult.nextSteps')}</h2><ul className="note-list-items">{arr(result.next_steps).map((p,i) => <li key={i}>{p}</li>)}</ul></div>}
         </>
       );
     case 'ready_message': {
       const msgs = typeof result.messages === 'object' && result.messages ? result.messages as Record<string, unknown> : {};
       return (
-        <div className="note-section"><h2>Mensajes listos</h2>
+        <div className="note-section"><h2>{t('modeResult.readyMsgs')}</h2>
           {(['professional','friendly','firm','brief'] as const).map(tone => {
             const text = s(msgs[tone]); if (!text) return null;
-            const labels: Record<string, string> = { professional: 'Profesional', friendly: 'Amigable', firm: 'Firme', brief: 'Breve' };
+            const labels: Record<string, string> = { professional: t('modeResult.professional'), friendly: t('modeResult.friendly'), firm: t('modeResult.firm'), brief: t('modeResult.brief') };
             return <div key={tone} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:600,color:'var(--text2)',textTransform:'uppercase',marginBottom:4}}>{labels[tone]}</div><div className="note-section-content">{text}</div></div>;
           })}
         </div>
@@ -1041,23 +1353,23 @@ function ModeResultView({ mode, result }: { mode: string; result: Record<string,
     case 'study':
       return (
         <>
-          {s(result.summary) && <div className="note-section"><h2>Resumen</h2><div className="note-section-content">{s(result.summary)}</div></div>}
-          {rArr(result.key_concepts).length > 0 && <div className="note-section"><h2>Conceptos clave</h2>{rArr(result.key_concepts).map((c,i) => <div key={i} style={{borderLeft:'3px solid var(--text)',padding:'8px 12px',margin:'8px 0',background:'var(--surface)',borderRadius:'0 8px 8px 0'}}><strong>{s(c.concept)}</strong><br/><span style={{color:'var(--text2)',fontSize:13}}>{s(c.explanation)}</span></div>)}</div>}
-          {rArr(result.probable_questions).length > 0 && <div className="note-section"><h2>Preguntas probables</h2><ul className="note-list-items">{rArr(result.probable_questions).map((q,i) => <li key={i}><strong>{s(q.question)}</strong>{s(q.answer_hint) && <><br/><em style={{color:'var(--text2)'}}>{s(q.answer_hint)}</em></>}</li>)}</ul></div>}
+          {s(result.summary) && <div className="note-section"><h2>{t('mode.summary')}</h2><div className="note-section-content">{s(result.summary)}</div></div>}
+          {rArr(result.key_concepts).length > 0 && <div className="note-section"><h2>{t('modeResult.keyConcepts')}</h2>{rArr(result.key_concepts).map((c,i) => <div key={i} style={{borderLeft:'3px solid var(--text)',padding:'8px 12px',margin:'8px 0',background:'var(--surface)',borderRadius:'0 8px 8px 0'}}><strong>{s(c.concept)}</strong><br/><span style={{color:'var(--text2)',fontSize:13}}>{s(c.explanation)}</span></div>)}</div>}
+          {rArr(result.probable_questions).length > 0 && <div className="note-section"><h2>{t('modeResult.probableQ')}</h2><ul className="note-list-items">{rArr(result.probable_questions).map((q,i) => <li key={i}><strong>{s(q.question)}</strong>{s(q.answer_hint) && <><br/><em style={{color:'var(--text2)'}}>{s(q.answer_hint)}</em></>}</li>)}</ul></div>}
         </>
       );
     case 'ideas':
       return (
         <>
-          {s(result.core_idea) && <div className="note-section"><h2>Idea central</h2><div className="note-section-content">{s(result.core_idea)}</div></div>}
-          {rArr(result.opportunities).length > 0 && <div className="note-section"><h2>Oportunidades</h2><ul className="note-list-items">{rArr(result.opportunities).map((o,i) => <li key={i}>{s(o.opportunity)} {s(o.potential) && <span className="note-badge">{s(o.potential)}</span>}</li>)}</ul></div>}
-          {s(result.structured_version) && <div className="note-section"><h2>Versión estructurada</h2><div className="note-section-content" style={{whiteSpace:'pre-wrap'}}>{s(result.structured_version)}</div></div>}
+          {s(result.core_idea) && <div className="note-section"><h2>{t('modeResult.coreIdea')}</h2><div className="note-section-content">{s(result.core_idea)}</div></div>}
+          {rArr(result.opportunities).length > 0 && <div className="note-section"><h2>{t('modeResult.opportunities')}</h2><ul className="note-list-items">{rArr(result.opportunities).map((o,i) => <li key={i}>{s(o.opportunity)} {s(o.potential) && <span className="note-badge">{s(o.potential)}</span>}</li>)}</ul></div>}
+          {s(result.structured_version) && <div className="note-section"><h2>{t('modeResult.structured')}</h2><div className="note-section-content" style={{whiteSpace:'pre-wrap'}}>{s(result.structured_version)}</div></div>}
         </>
       );
     case 'outline':
       return (
         <div className="note-section">
-          <h2>Outline</h2>
+          <h2>{t('mode.outline')}</h2>
           {rArr(result.sections).map((section, sIdx) => (
             <div key={sIdx} className="outline-section">
               <div className="outline-heading">
@@ -1093,6 +1405,7 @@ function ModeResultView({ mode, result }: { mode: string; result: Record<string,
 // ── Workspaces Page ─────────────────────────────────────────────────────
 
 function WorkspacesPage() {
+  const { t } = useI18n();
   const [workspaces, setWorkspaces] = useState<{id:string;name:string;description:string;owner_id:string;created_at:string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -1131,20 +1444,20 @@ function WorkspacesPage() {
       <div className="dashboard-header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1>👥 Workspaces</h1>
-            <p>Colabora con tu equipo en notas compartidas</p>
+            <h1>👥 {t('ws.title')}</h1>
+            <p>{t('ws.subtitle')}</p>
           </div>
-          <button className="action-btn" style={{ background: 'var(--text)', color: '#fff' }} onClick={() => setShowCreate(true)}>+ Crear workspace</button>
+          <button className="action-btn" style={{ background: 'var(--text)', color: '#fff' }} onClick={() => setShowCreate(true)}>{t('ws.create')}</button>
         </div>
       </div>
 
-      <p style={{ marginBottom: 20 }}><Link to="/">← Volver al inicio</Link></p>
+      <p style={{ marginBottom: 20 }}><Link to="/">{t('int.backHome')}</Link></p>
 
       {workspaces.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">👥</div>
-          <h3>Sin workspaces</h3>
-          <p>Crea un workspace para organizar tu equipo.</p>
+          <h3>{t('ws.empty')}</h3>
+          <p>{t('ws.emptyHint')}</p>
         </div>
       ) : (
         <div className="workspace-grid">
@@ -1165,12 +1478,12 @@ function WorkspacesPage() {
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal-sheet" onClick={e => e.stopPropagation()}>
-            <h2>Nuevo workspace</h2>
-            <input className="auth-input" placeholder="Nombre del workspace" value={name} onChange={e => setName(e.target.value)} autoFocus />
-            <input className="auth-input" placeholder="Descripción (opcional)" value={desc} onChange={e => setDesc(e.target.value)} />
+            <h2>{t('ws.new')}</h2>
+            <input className="auth-input" placeholder={t('ws.name')} value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <input className="auth-input" placeholder={t('ws.descOpt')} value={desc} onChange={e => setDesc(e.target.value)} />
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="action-btn" style={{ flex: 1 }} onClick={() => setShowCreate(false)}>Cancelar</button>
-              <button className="auth-btn" style={{ flex: 1, marginTop: 0 }} onClick={handleCreate} disabled={!name.trim()}>Crear</button>
+              <button className="action-btn" style={{ flex: 1 }} onClick={() => setShowCreate(false)}>{t('common.cancel')}</button>
+              <button className="auth-btn" style={{ flex: 1, marginTop: 0 }} onClick={handleCreate} disabled={!name.trim()}>{t('ws.create').replace('+ ', '')}</button>
             </div>
           </div>
         </div>
@@ -1182,6 +1495,8 @@ function WorkspacesPage() {
 // ── Integrations Page ────────────────────────────────────────────────────
 
 function IntegrationsPage() {
+  const { t } = useI18n();
+  const { toast } = useToast();
   const [slackUrl, setSlackUrl] = useState('');
   const [slackSaved, setSlackSaved] = useState(false);
   const [slackEnabled, setSlackEnabled] = useState(false);
@@ -1204,7 +1519,7 @@ function IntegrationsPage() {
   }, []);
 
   const handleSaveSlack = async () => {
-    if (!slackUrl.startsWith('https://hooks.slack.com/')) { alert('URL debe empezar con https://hooks.slack.com/'); return; }
+    if (!slackUrl.startsWith('https://hooks.slack.com/')) { toast(t('toast.slackBadUrl'), 'error'); return; }
     const session = (await supabase.auth.getSession()).data.session;
     if (!session) return;
     await supabase.from('integrations').upsert({
@@ -1212,7 +1527,7 @@ function IntegrationsPage() {
       config: { webhook_url: slackUrl, notify_on: ['processing_complete'] }, enabled: true,
     }, { onConflict: 'user_id,provider' });
     setSlackSaved(true); setSlackEnabled(true);
-    alert('Slack conectado. Recibirás resúmenes de tus notas automáticamente.');
+    toast(t('toast.slackConnected'));
   };
 
   const handleGenerateApiKey = async () => {
@@ -1312,10 +1627,10 @@ function IntegrationsPage() {
   return (
     <div className="container">
       <div className="dashboard-header">
-        <h1>⚡ Integraciones</h1>
-        <p>Conecta Sythio con tus herramientas</p>
+        <h1>⚡ {t('int.title')}</h1>
+        <p>{t('int.subtitle')}</p>
       </div>
-      <p style={{ marginBottom: 24 }}><Link to="/">← Volver al inicio</Link></p>
+      <p style={{ marginBottom: 24 }}><Link to="/">{t('int.backHome')}</Link></p>
 
       <div className="integrations-grid">
         {/* Slack */}
@@ -1420,7 +1735,7 @@ function IntegrationsPage() {
                   <p style={{ fontSize: 13, color: 'var(--warning)', fontWeight: 600, marginBottom: 4 }}>Guarda tu API Key — no se mostrará de nuevo</p>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input className="auth-input" style={{ flex: 1, marginBottom: 0, fontFamily: 'monospace', fontSize: 12 }} value={apiKey} readOnly onClick={e => (e.target as HTMLInputElement).select()} />
-                    <button className="action-btn" onClick={() => { navigator.clipboard.writeText(apiKey); alert('API key copiada'); }}>Copiar</button>
+                    <button className="action-btn" onClick={() => { navigator.clipboard.writeText(apiKey); toast(t('common.copied')); }}>{t('note.copy')}</button>
                   </div>
                 </div>
                 <div className="setup-steps">
@@ -1503,12 +1818,33 @@ function initTheme() {
   }
 }
 
+// ── Platform Banner (extracted so it can use useI18n inside provider) ────────
+
+function PlatformBannerUI({ platform, onDismiss }: { platform: string; onDismiss: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="container" style={{ paddingTop: 16 }}>
+      <div style={{
+        padding: '14px 20px', borderRadius: 'var(--radius)',
+        background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+        display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: 'var(--text2)',
+      }}>
+        <span style={{ fontSize: 18 }}>{platform === 'ios' ? '📱' : '🤖'}</span>
+        <span>
+          {t('platform.activeVia')} <strong>{platform === 'ios' ? 'App Store' : 'Google Play'}</strong>.{' '}
+          {t('platform.manageFrom')} {platform === 'ios' ? 'iPhone' : 'Android'}.
+        </span>
+        <button onClick={onDismiss} style={{ background: 'none', color: 'var(--text3)', fontSize: 18, marginLeft: 'auto', flexShrink: 0 }}>✕</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Root App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
   const [platformBanner, setPlatformBanner] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1532,6 +1868,8 @@ export default function App() {
   if (loading) return <div className="loading" style={{minHeight:'100vh',alignItems:'center'}}><div className="spinner" /></div>;
 
   return (
+    <I18nProvider>
+    <ToastProvider>
     <BrowserRouter>
       <Routes>
         {/* Public shared note route - no auth required */}
@@ -1543,20 +1881,7 @@ export default function App() {
             <div className="app">
               <Nav email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} />
               {platformBanner && (
-                <div className="container" style={{ paddingTop: 16 }}>
-                  <div style={{
-                    padding: '14px 20px', borderRadius: 'var(--radius)',
-                    background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
-                    display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: 'var(--text2)',
-                  }}>
-                    <span style={{ fontSize: 18 }}>{platformBanner === 'ios' ? '📱' : '🤖'}</span>
-                    <span>
-                      Tienes una suscripcion activa via <strong>{platformBanner === 'ios' ? 'App Store' : 'Google Play'}</strong>.
-                      Tu plan Pro esta activo. Para administrar tu suscripcion, hazlo desde tu {platformBanner === 'ios' ? 'iPhone' : 'dispositivo Android'}.
-                    </span>
-                    <button onClick={() => setPlatformBanner(null)} style={{ background: 'none', color: 'var(--text3)', fontSize: 18, marginLeft: 'auto', flexShrink: 0 }}>✕</button>
-                  </div>
-                </div>
+                <PlatformBannerUI platform={platformBanner} onDismiss={() => setPlatformBanner(null)} />
               )}
               <Routes>
                 <Route path="/" element={<Dashboard />} />
@@ -1568,13 +1893,13 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>
-          ) : showAuth ? (
-            <AuthPage onAuth={() => {}} onBack={() => setShowAuth(false)} />
           ) : (
-            <LandingPage onNavigateAuth={() => setShowAuth(true)} />
+            <AuthPage onAuth={() => {}} />
           )
         } />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
+    </I18nProvider>
   );
 }

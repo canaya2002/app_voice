@@ -19,7 +19,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   fetchProfile: () => Promise<void>;
-  setPlan: (plan: 'free' | 'premium') => void;
+  setPlan: (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -178,18 +178,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  setPlan: async (plan: 'free' | 'premium') => {
+  setPlan: async (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => {
     const { user, session } = get();
     if (user) {
       set({ user: { ...user, plan } });
     }
-    // Persist to DB
-    if (session) {
-      try {
-        await supabase.from('profiles').update({ plan }).eq('id', session.user.id);
-      } catch (err) {
-        if (__DEV__) console.warn('[authStore] setPlan DB error:', err);
+    if (!session) return;
+    try {
+      // Update profiles.plan (quick checks)
+      await supabase.from('profiles').update({ plan }).eq('id', session.user.id);
+      // Sync to subscriptions table (authoritative billing record)
+      if (plan !== 'free' && platform) {
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        await supabase.functions.invoke('sync-subscription', {
+          body: {
+            plan,
+            platform,
+            status: 'active',
+            current_period_start: now.toISOString(),
+            current_period_end: periodEnd.toISOString(),
+          },
+        });
       }
+    } catch (err) {
+      if (__DEV__) console.warn('[authStore] setPlan error:', err);
     }
   },
 }));
