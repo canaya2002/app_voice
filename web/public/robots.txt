@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+Disallow: /note/
+Disallow: /trash
+Disallow: /settings
+
+User-agent: GPTBot
+Allow: /
+Allow: /shared/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /shared/
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+Host: https://sythio.app
+Sitemap: https://sythio.app/sitemap.xml
