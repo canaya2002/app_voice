@@ -56,25 +56,79 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Pregunta inválida" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
+  // ── Context selection params ──
+  const contextType = (body.context_type as string) || "all";          // "all" | "notes" | "folder" | "channel"
+  const noteIds = Array.isArray(body.note_ids) ? body.note_ids as string[] : [];
+  const folderIds = Array.isArray(body.folder_ids) ? body.folder_ids as string[] : [];
+  const channelIds = Array.isArray(body.channel_ids) ? body.channel_ids as string[] : [];
+
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // ── Fetch user's recent notes for context ──
-  const { data: notes } = await admin
-    .from("notes")
-    .select("id, title, summary, transcript, key_points, tasks, clean_text, created_at, primary_mode, template, speakers_detected")
-    .eq("user_id", user.id)
-    .eq("status", "done")
-    .order("created_at", { ascending: false })
-    .limit(20);
+  // ── Fetch notes based on context type ──
+  let notes: Record<string, unknown>[] = [];
+  const selectFields = "id, title, summary, transcript, key_points, tasks, clean_text, created_at, primary_mode, template, speakers_detected, folder_id";
+
+  if (contextType === "notes" && noteIds.length > 0) {
+    // Explicit note selection
+    const { data } = await admin
+      .from("notes")
+      .select(selectFields)
+      .eq("user_id", user.id)
+      .eq("status", "done")
+      .in("id", noteIds.slice(0, 20))
+      .order("created_at", { ascending: false });
+    notes = (data ?? []) as Record<string, unknown>[];
+
+  } else if (contextType === "folder" && folderIds.length > 0) {
+    // Notes from specific folders
+    const { data } = await admin
+      .from("notes")
+      .select(selectFields)
+      .eq("user_id", user.id)
+      .eq("status", "done")
+      .in("folder_id", folderIds.slice(0, 10))
+      .order("created_at", { ascending: false })
+      .limit(30);
+    notes = (data ?? []) as Record<string, unknown>[];
+
+  } else if (contextType === "channel" && channelIds.length > 0) {
+    // Notes shared to specific channels
+    const { data: channelNoteRows } = await admin
+      .from("channel_notes")
+      .select("note_id")
+      .in("channel_id", channelIds.slice(0, 10));
+
+    const cnNoteIds = (channelNoteRows ?? []).map((r: Record<string, unknown>) => r.note_id as string);
+    if (cnNoteIds.length > 0) {
+      const { data } = await admin
+        .from("notes")
+        .select(selectFields)
+        .in("id", cnNoteIds.slice(0, 30))
+        .eq("status", "done")
+        .order("created_at", { ascending: false });
+      notes = (data ?? []) as Record<string, unknown>[];
+    }
+
+  } else {
+    // Default: all user's recent notes (original behavior)
+    const { data } = await admin
+      .from("notes")
+      .select(selectFields)
+      .eq("user_id", user.id)
+      .eq("status", "done")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    notes = (data ?? []) as Record<string, unknown>[];
+  }
 
   if (!notes || notes.length === 0) {
     return new Response(
-      JSON.stringify({ answer: "Aún no tienes notas procesadas. Graba tu primer audio para poder hacerme preguntas.", sources: [] }),
+      JSON.stringify({ answer: "No encontré notas en el contexto seleccionado. Intenta con otra selección o graba tu primer audio.", sources: [] }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
-  // ── Simple text search to find relevant notes ──
+  // ── Relevance scoring ──
   const queryWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 2);
   const scored = notes.map((note) => {
     const haystack = [
@@ -88,9 +142,12 @@ serve(async (req: Request) => {
       if (haystack.includes(w)) score++;
     }
     // Recency boost
-    const daysAgo = (Date.now() - new Date(note.created_at).getTime()) / 86400000;
+    const daysAgo = (Date.now() - new Date(note.created_at as string).getTime()) / 86400000;
     if (daysAgo < 1) score += 2;
     else if (daysAgo < 7) score += 1;
+
+    // If user explicitly selected context, boost all selected notes
+    if (contextType !== "all") score += 3;
 
     return { note, score };
   });
@@ -113,17 +170,23 @@ serve(async (req: Request) => {
 Resumen: ${note.summary || "Sin resumen"}
 Puntos clave: ${Array.isArray(note.key_points) ? note.key_points.join("; ") : ""}
 Tareas: ${Array.isArray(note.tasks) ? note.tasks.join("; ") : ""}
-Transcripción: ${(note.transcript || "").slice(0, 2000)}`;
+Transcripción: ${((note.transcript as string) || "").slice(0, 2000)}`;
 
     if (contextChars + block.length > MAX_CONTEXT_CHARS) break;
     contextBlocks.push(block);
-    sourceIds.push(note.id);
+    sourceIds.push(note.id as string);
     contextChars += block.length;
   }
 
+  // ── Build context description for the system prompt ──
+  let contextDesc = "all of the user's notes";
+  if (contextType === "notes") contextDesc = `${sourceIds.length} specifically selected notes`;
+  else if (contextType === "folder") contextDesc = `notes from ${folderIds.length} selected folder(s)`;
+  else if (contextType === "channel") contextDesc = `notes from ${channelIds.length} selected channel(s)`;
+
   // ── Call Claude ──
   const systemPrompt = `You are Sythio AI, a helpful assistant that answers questions about the user's voice notes and recordings.
-You have access to the user's notes provided below. Answer based ONLY on the information in these notes.
+You have access to ${contextDesc} provided below. Answer based ONLY on the information in these notes.
 If the answer isn't in the notes, say so honestly.
 Respond in the SAME LANGUAGE as the user's question.
 Be concise and direct. Reference specific notes when possible.`;

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
+// LinearGradient removed — tab bar now uses flat neutral backgrounds
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -36,6 +36,7 @@ interface TabConfig {
 
 const TAB_CONFIG: TabConfig[] = [
   { name: 'index', label: 'Inicio', iconFocused: 'home', iconDefault: 'home-outline' },
+  { name: 'tasks', label: 'Tareas', iconFocused: 'checkbox', iconDefault: 'checkbox-outline' },
   { name: 'history', label: 'Historial', iconFocused: 'time', iconDefault: 'time-outline' },
   { name: 'profile', label: 'Perfil', iconFocused: 'person', iconDefault: 'person-outline' },
   { name: 'menu', label: 'Más', iconFocused: 'menu', iconDefault: 'menu-outline' },
@@ -107,22 +108,17 @@ function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
         accessibilityRole="button"
       >
         <View style={styles.tabInner}>
-          {/* Pill gradient background */}
+          {/* Pill background */}
           <Animated.View style={[styles.tabPill, pillStyle]}>
-            <LinearGradient
-              colors={['#0B0B0B', '#2A2A2A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.tabPillGradient}
-            />
+            <View style={styles.tabPillBg} />
           </Animated.View>
 
           {/* Icon */}
           <Animated.View style={iconStyle}>
             <Ionicons
               name={focused ? config.iconFocused : config.iconDefault}
-              size={22}
-              color={focused ? '#FFFFFF' : '#B8BCC4'}
+              size={21}
+              color={focused ? '#111111' : '#999AAA'}
             />
           </Animated.View>
 
@@ -130,7 +126,7 @@ function TabItem({ focused, config, onPress, onLongPress }: TabItemProps) {
           <Animated.Text
             style={[
               styles.tabLabel,
-              { color: focused ? '#0B0B0B' : '#B8BCC4', fontWeight: focused ? '600' : '400' },
+              { color: focused ? '#111111' : '#999AAA', fontWeight: focused ? '600' : '400' },
               labelStyle,
             ]}
             numberOfLines={1}
@@ -194,6 +190,7 @@ export default function TabLayout() {
   return (
     <Tabs tabBar={renderTabBar} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ title: 'Inicio' }} />
+      <Tabs.Screen name="tasks" options={{ title: 'Tareas' }} />
       <Tabs.Screen name="history" options={{ title: 'Historial' }} />
       <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />
       <Tabs.Screen name="menu" options={{ title: 'Más' }} />
@@ -219,7 +216,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    borderColor: '#E8E8EC',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -231,7 +228,7 @@ const styles = StyleSheet.create({
     }),
   },
   tabBarBg: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
   },
   tabBarContent: {
     flex: 1,
@@ -253,19 +250,15 @@ const styles = StyleSheet.create({
   },
   tabPill: {
     position: 'absolute',
-    width: 56,
-    height: 36,
-    borderRadius: 18,
+    width: 52,
+    height: 32,
+    borderRadius: 10,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
   },
-  tabPillGradient: {
+  tabPillBg: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 10,
+    backgroundColor: '#F0F0F3',
   },
   tabLabel: {
     fontSize: 10,

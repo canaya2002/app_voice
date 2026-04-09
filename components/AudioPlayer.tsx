@@ -8,9 +8,15 @@ import { formatDuration } from '@/lib/audio';
 import { hapticSelection } from '@/lib/haptics';
 import AnimatedPressable from '@/components/AnimatedPressable';
 
+import type { Bookmark } from '@/types';
+
 interface AudioPlayerProps {
   uri: string;
   duration: number;
+  bookmarks?: Bookmark[];
+  onTimeUpdate?: (positionSec: number) => void;
+  onSeekToTime?: React.MutableRefObject<((timeSec: number) => void) | null>;
+  onAddBookmark?: (timeSec: number) => void;
 }
 
 const SPEEDS = [1, 1.5, 2] as const;
@@ -29,7 +35,7 @@ function generateWaveformBars(seed: string, count: number): number[] {
   return bars;
 }
 
-export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
+export default function AudioPlayer({ uri, duration, bookmarks = [], onTimeUpdate, onSeekToTime, onAddBookmark }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration);
@@ -37,6 +43,57 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const playAnim = useRef(new Animated.Value(1)).current;
   const waveformBars = useRef(generateWaveformBars(uri, 40)).current;
+
+  // Expose seekTo function to parent via ref — auto-loads audio if needed
+  const seekTo = useCallback(async (timeSec: number) => {
+    try {
+      if (soundRef.current) {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          await soundRef.current.setPositionAsync(timeSec * 1000);
+          setPosition(timeSec);
+          if (!status.isPlaying) {
+            await soundRef.current.playAsync();
+            setIsPlaying(true);
+          }
+          return;
+        }
+      }
+      // Audio not loaded yet — load it and start at the requested position
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true, positionMillis: timeSec * 1000, rate: SPEEDS[speedIndex] },
+        (status) => {
+          if (status.isLoaded) {
+            const posSec = Math.floor((status.positionMillis ?? 0) / 1000);
+            setPosition(posSec);
+            onTimeUpdate?.(posSec);
+            if (status.durationMillis) {
+              setTotalDuration(Math.floor(status.durationMillis / 1000));
+            }
+            if (status.didJustFinish) {
+              setIsPlaying(false);
+              setPosition(0);
+              onTimeUpdate?.(0);
+            }
+          }
+        },
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+      setPosition(timeSec);
+    } catch {
+      // Audio seek/load error — silently handled
+    }
+  }, [uri, speedIndex, onTimeUpdate]);
+
+  useEffect(() => {
+    if (onSeekToTime) onSeekToTime.current = seekTo;
+  }, [seekTo, onSeekToTime]);
 
   useEffect(() => {
     return () => {
@@ -96,13 +153,16 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
         { shouldPlay: true, rate: SPEEDS[speedIndex] },
         (status) => {
           if (status.isLoaded) {
-            setPosition(Math.floor((status.positionMillis ?? 0) / 1000));
+            const posSec = Math.floor((status.positionMillis ?? 0) / 1000);
+            setPosition(posSec);
+            onTimeUpdate?.(posSec);
             if (status.durationMillis) {
               setTotalDuration(Math.floor(status.durationMillis / 1000));
             }
             if (status.didJustFinish) {
               setIsPlaying(false);
               setPosition(0);
+              onTimeUpdate?.(0);
             }
           }
         }
@@ -149,6 +209,25 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
         })}
       </View>
 
+      {/* Bookmark markers on waveform */}
+      {bookmarks.length > 0 && totalDuration > 0 && (
+        <View style={styles.bookmarkTrack}>
+          {bookmarks.map((bm, i) => {
+            const pct = Math.min(bm.time / totalDuration, 1) * 100;
+            return (
+              <AnimatedPressable
+                key={`${bm.time}-${i}`}
+                onPress={() => seekTo(bm.time)}
+                style={[styles.bookmarkDot, { left: `${pct}%` }]}
+                accessibilityLabel={`Marcador: ${bm.label}`}
+              >
+                <Ionicons name="bookmark" size={10} color={COLORS.accentGold} />
+              </AnimatedPressable>
+            );
+          })}
+        </View>
+      )}
+
       <View style={styles.controls}>
         <Animated.View style={{ transform: [{ scale: playAnim }] }}>
           <AnimatedPressable
@@ -172,6 +251,16 @@ export default function AudioPlayer({ uri, duration }: AudioPlayerProps) {
           <Text style={styles.timeSeparator}>/</Text>
           <Text style={styles.time}>{formatDuration(totalDuration)}</Text>
         </View>
+
+        {onAddBookmark && (
+          <AnimatedPressable
+            onPress={() => { hapticSelection(); onAddBookmark(position); }}
+            style={styles.bookmarkButton}
+            accessibilityLabel="Agregar marcador"
+          >
+            <Ionicons name="bookmark-outline" size={16} color={COLORS.accentGold} />
+          </AnimatedPressable>
+        )}
 
         <AnimatedPressable
           onPress={toggleSpeed}
@@ -251,5 +340,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.primary,
+  },
+  bookmarkTrack: {
+    position: 'relative',
+    height: 14,
+    marginTop: -8,
+    marginBottom: -4,
+  },
+  bookmarkDot: {
+    position: 'absolute',
+    top: 0,
+    marginLeft: -5,
+  },
+  bookmarkButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: COLORS.accentGold + '15',
   },
 });

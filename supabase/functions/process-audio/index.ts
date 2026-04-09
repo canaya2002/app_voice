@@ -404,15 +404,15 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
     const langInstr = "IMPORTANT: Respond in the SAME LANGUAGE as the transcript. If the transcript is in Spanish, respond in Spanish. If in English, respond in English. Etc.";
 
     const modePrompts: Record<string, string> = {
-      summary: `Extract an executive summary from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[]}${CHART_HINT}`,
-      tasks: `Extract ALL tasks from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0}${CHART_HINT}`,
-      action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria"}${CHART_HINT}`,
-      clean_text: `Rewrite as clean, professional text. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","clean_text":"rewritten text without filler words","format":"narrative","word_count":0}`,
-      executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[]}${CHART_HINT}`,
-      ready_message: `Generate ready-to-send messages. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient"}`,
-      study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[]}${CHART_HINT}`,
-      ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea"}${CHART_HINT}`,
-      outline: `Generate a hierarchical outline. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","sections":[{"heading":"section title","points":["point"],"subsections":[{"heading":"subsection","points":["detail"]}]}],"duration_covered":"total duration","total_sections":0,"total_points":0}`,
+      summary: `Extract an executive summary from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title 6-8 words","summary":"summary 3-5 sentences","key_points":["point"],"topics":["topic"],"speaker_highlights":[],"tags":["3-5 short keyword tags for categorization"]}${CHART_HINT}`,
+      tasks: `Extract ALL tasks from this transcript. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","tasks":[{"text":"task","priority":"high|medium|low","responsible":null,"deadline_hint":null,"source_quote":"quote","is_explicit":true}],"total_explicit":0,"total_implicit":0,"tags":["3-5 short keyword tags"]}${CHART_HINT}`,
+      action_plan: `Convert into an action plan. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","objective":"objective","steps":[{"order":1,"action":"what to do","responsible":null,"depends_on":null,"estimated_effort":"low|medium|high"}],"obstacles":[],"next_immediate_step":"first step","success_criteria":"criteria","tags":["3-5 short keyword tags"]}${CHART_HINT}`,
+      clean_text: `Rewrite as clean, professional text. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","clean_text":"rewritten text without filler words","format":"narrative","word_count":0,"tags":["3-5 short keyword tags"]}`,
+      executive_report: `Generate an executive report. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","context":"context","executive_summary":"summary","decisions":[],"key_points":[],"agreements":[],"pending_items":[],"next_steps":[],"participants":[],"tags":["3-5 short keyword tags"]}${CHART_HINT}`,
+      ready_message: `Generate ready-to-send messages. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","messages":{"professional":"","friendly":"","firm":"","brief":""},"suggested_subject":"subject","context_note":"recipient","tags":["3-5 short keyword tags"]}`,
+      study: `Convert into study material. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","summary":"summary","key_concepts":[{"concept":"name","explanation":"explanation"}],"review_points":[],"probable_questions":[{"question":"question","answer_hint":"hint"}],"mnemonics":[],"connections":[],"tags":["3-5 short keyword tags"]}${CHART_HINT}`,
+      ideas: `Analyze as idea exploration. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"name","core_idea":"core idea","opportunities":[{"opportunity":"opportunity","potential":"high|medium|low"}],"interesting_points":[],"open_questions":[],"suggested_next_step":"step","structured_version":"structured idea","tags":["3-5 short keyword tags"]}${CHART_HINT}`,
+      outline: `Generate a hierarchical outline. ${langInstr}${ctx ? " " + ctx : ""}\n\nTranscript:\n"""\n${truncated}\n"""\n\nRespond ONLY with JSON:\n{"title_suggestion":"title","sections":[{"heading":"section title","points":["point"],"subsections":[{"heading":"subsection","points":["detail"]}]}],"duration_covered":"total duration","total_sections":0,"total_points":0,"tags":["3-5 short keyword tags"]}`,
     };
 
     const claudeCtrl2 = new AbortController();
@@ -437,6 +437,9 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
     const legacyKeyPoints = Array.isArray(modeResult.key_points) ? modeResult.key_points : [];
     const legacyTasks = Array.isArray(modeResult.tasks) ? (modeResult.tasks as Array<Record<string, unknown>>).map(t => typeof t === "string" ? t : String(t.text || "")) : [];
     const legacyCleanText = typeof modeResult.clean_text === "string" ? modeResult.clean_text : rawTranscript;
+    const autoTags = Array.isArray(modeResult.tags)
+      ? (modeResult.tags as string[]).filter((t): t is string => typeof t === "string").slice(0, 8)
+      : [];
 
     await admin.from("notes").update({
       title: autoTitle,
@@ -452,10 +455,32 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
       speakers,
       primary_mode,
       template,
+      tags: autoTags,
     }).eq("id", note_id);
 
     // ── 8. Save mode result ──
     await admin.from("mode_results").insert({ note_id, mode: primary_mode, result: modeResult });
+
+    // ── 8b. Sync tasks to global action_items table ──
+    if (legacyTasks.length > 0) {
+      const taskInserts = legacyTasks.map((text: string, i: number) => {
+        // Try to extract priority from mode result if tasks mode
+        const taskObj = Array.isArray(modeResult.tasks) ? (modeResult.tasks as Array<Record<string, unknown>>)[i] : null;
+        const priority = (taskObj?.priority as string) || "medium";
+        const assignee = (taskObj?.responsible as string) || null;
+        const sourceQuote = (taskObj?.source_quote as string) || null;
+        return {
+          user_id: user.id,
+          note_id,
+          text,
+          priority: ["high", "medium", "low"].includes(priority) ? priority : "medium",
+          assignee,
+          source_quote: sourceQuote,
+        };
+      });
+      // Fire-and-forget — don't block on this
+      admin.from("action_items").insert(taskInserts).then(() => {});
+    }
 
     // ── 9. Update daily audio minutes for premium users ──
     if (plan === "premium") {

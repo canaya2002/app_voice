@@ -3,57 +3,57 @@ import type { OutputMode, NoteTemplate } from '@/types';
 import { useThemeStore } from '@/stores/themeStore';
 
 export const COLORS = {
-  // Core brand — deep ink + luminous blue accent
-  primary: '#0A0A0C',
-  primaryLight: '#6CB4EE',
-  primaryDark: '#050507',
-  primaryPale: '#EAF2FB',
-  primaryGlow: 'rgba(108, 180, 238, 0.22)',
+  // Core brand — monochrome neutral (aligned with web)
+  primary: '#111111',
+  primaryLight: '#8B5CF6',
+  primaryDark: '#000000',
+  primaryPale: 'rgba(139, 92, 246, 0.05)',
+  primaryGlow: 'rgba(139, 92, 246, 0.08)',
 
-  // Backgrounds — warm atmospheric, not flat white
-  background: '#F8F7F4',
-  backgroundSecondary: '#F2F1ED',
+  // Backgrounds — clean neutral, not warm
+  background: '#F8F9FA',
+  backgroundSecondary: '#F0F1F3',
   surface: '#FFFFFF',
-  surfaceAlt: '#F0EFE9',
+  surfaceAlt: '#F5F5F7',
 
-  // Glassmorphism — warmer, richer
+  // Glassmorphism
   glassBg: 'rgba(255, 255, 255, 0.68)',
   glassBorder: 'rgba(255, 255, 255, 0.45)',
-  glassShadow: 'rgba(0, 0, 0, 0.10)',
+  glassShadow: 'rgba(0, 0, 0, 0.08)',
 
   // Accent
-  accentGold: '#E8930C',
-  accentTeal: '#0C8CE9',
+  accentGold: '#F59E0B',
+  accentTeal: '#14B8A6',
 
-  // Text — better contrast hierarchy
-  textPrimary: '#111114',
-  textSecondary: '#6E7179',
-  textMuted: '#A3A7B0',
+  // Text — clean contrast hierarchy
+  textPrimary: '#111111',
+  textSecondary: '#666677',
+  textMuted: '#999AAA',
 
-  // Semantic — slightly richer tones
-  success: '#1DB954',
-  warning: '#E8930C',
-  error: '#E5383B',
-  info: '#6CB4EE',
+  // Semantic
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#8B5CF6',
 
-  // Borders — warmer undertone
-  border: '#E4E2DC',
-  borderLight: '#ECEAE4',
+  // Borders — cool neutral
+  border: '#E8E8EC',
+  borderLight: '#F0F0F3',
 
   // Recording
-  recording: '#E5383B',
-  recordingBg: '#FEF0EF',
+  recording: '#EF4444',
+  recordingBg: 'rgba(239, 68, 68, 0.05)',
 };
 
 export const DARK_COLORS: typeof COLORS = {
-  primary: '#F5F4F0',
-  primaryLight: '#6CB4EE',
-  primaryDark: '#EEEEE8',
-  primaryPale: '#172030',
-  primaryGlow: 'rgba(108, 180, 238, 0.22)',
+  primary: '#F0F0F3',
+  primaryLight: '#A78BFA',
+  primaryDark: '#E8E8EC',
+  primaryPale: 'rgba(167, 139, 250, 0.08)',
+  primaryGlow: 'rgba(167, 139, 250, 0.12)',
 
-  background: '#0C0C0E',
-  backgroundSecondary: '#121214',
+  background: '#0A0A0C',
+  backgroundSecondary: '#111114',
   surface: '#1A1A1E',
   surfaceAlt: '#222226',
 
@@ -61,23 +61,23 @@ export const DARK_COLORS: typeof COLORS = {
   glassBorder: 'rgba(255, 255, 255, 0.07)',
   glassShadow: 'rgba(0, 0, 0, 0.35)',
 
-  accentGold: '#F5A623',
-  accentTeal: '#3AADFF',
+  accentGold: '#F59E0B',
+  accentTeal: '#2DD4BF',
 
-  textPrimary: '#F0EFE9',
+  textPrimary: '#F0F0F3',
   textSecondary: '#8E919A',
   textMuted: '#55585F',
 
-  success: '#1DB954',
-  warning: '#E8930C',
-  error: '#E5383B',
-  info: '#6CB4EE',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#A78BFA',
 
   border: '#28282C',
   borderLight: '#222226',
 
-  recording: '#E5383B',
-  recordingBg: '#2A1616',
+  recording: '#EF4444',
+  recordingBg: 'rgba(239, 68, 68, 0.08)',
 };
 
 export type ThemeColors = typeof COLORS;
@@ -116,12 +116,12 @@ export function isModeFreeTier(mode: OutputMode): boolean {
 }
 
 export const SPEAKER_COLORS = [
-  { bg: '#E6F0FA', text: '#1B6FA8', name: 'blue' },
-  { bg: '#E8F5E9', text: '#1A7A42', name: 'green' },
-  { bg: '#FFF3E0', text: '#AD5A00', name: 'amber' },
-  { bg: '#F0EFEA', text: '#535660', name: 'gray' },
-  { bg: '#FCE4EC', text: '#9B1048', name: 'pink' },
-  { bg: '#E8EAF6', text: '#303090', name: 'indigo' },
+  { bg: 'rgba(99, 102, 241, 0.08)', text: '#6366F1', name: 'indigo' },
+  { bg: 'rgba(16, 185, 129, 0.08)', text: '#10B981', name: 'green' },
+  { bg: 'rgba(245, 158, 11, 0.08)', text: '#D97706', name: 'amber' },
+  { bg: 'rgba(100, 116, 139, 0.08)', text: '#64748B', name: 'slate' },
+  { bg: 'rgba(239, 68, 68, 0.06)', text: '#EF4444', name: 'red' },
+  { bg: 'rgba(139, 92, 246, 0.08)', text: '#8B5CF6', name: 'violet' },
 ];
 
 export interface ModeConfig {

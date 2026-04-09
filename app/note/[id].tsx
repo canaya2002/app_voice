@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,14 +37,15 @@ import Paywall from '@/components/Paywall';
 import NoteComments from '@/components/NoteComments';
 import NoteImages from '@/components/NoteImages';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import type { OutputMode, SpeakerInfo, ModeResult, Folder, Channel } from '@/types';
+import { useTasksStore } from '@/stores/tasksStore';
+import type { OutputMode, SpeakerInfo, ModeResult, Folder, Channel, TranscriptSegment } from '@/types';
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
     currentNote, loading, modeResults, converting, convertingMode,
     fetchNote, fetchModeResults, subscribeToNote, convertMode, updateSpeakers,
-    retryProcessing,
+    retryProcessing, togglePin, addBookmark, removeBookmark,
   } = useNotesStore();
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -59,9 +60,15 @@ export default function NoteDetailScreen() {
   const [showComments, setShowComments] = useState(false);
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // v5 — Otter-killer features
+  const [audioPosition, setAudioPosition] = useState(0);
+  const [transcriptSearch, setTranscriptSearch] = useState('');
+  const [showTranscriptSearch, setShowTranscriptSearch] = useState(false);
+  const seekToRef = useRef<((timeSec: number) => void) | null>(null);
   const { user } = useAuthStore();
   const { folders, fetchFolders, moveNoteToFolder } = useNotesStore();
   const { workspaces, channels, fetchWorkspaces, fetchChannels, shareNoteToChannel } = useWorkspaceStore();
+  const { syncFromNote } = useTasksStore();
   const colors = useThemeColors();
 
   useEffect(() => {
@@ -83,6 +90,13 @@ export default function NoteDetailScreen() {
     if (currentNote && !selectedMode) setSelectedMode(currentNote.primary_mode || 'summary');
   }, [currentNote, selectedMode]);
 
+  // Sync note tasks to global action_items
+  useEffect(() => {
+    if (currentNote?.status === 'done' && currentNote.tasks?.length && id) {
+      syncFromNote(id, currentNote.tasks, currentNote.title);
+    }
+  }, [currentNote?.status, currentNote?.tasks?.length, id]);
+
   const generatedModes = useMemo(() => {
     const modes = modeResults.map((r) => r.mode as OutputMode);
     if (currentNote?.primary_mode && !modes.includes(currentNote.primary_mode)) {
@@ -92,6 +106,36 @@ export default function NoteDetailScreen() {
   }, [modeResults, currentNote?.primary_mode]);
 
   const activeResult: ModeResult | undefined = modeResults.find((r) => r.mode === selectedMode);
+
+  // Calculate which transcript segment is currently playing
+  const activeSegmentIndex = useMemo(() => {
+    if (!currentNote?.segments?.length || audioPosition === 0) return -1;
+    for (let i = currentNote.segments.length - 1; i >= 0; i--) {
+      if (audioPosition >= currentNote.segments[i].start) return i;
+    }
+    return -1;
+  }, [currentNote?.segments, audioPosition]);
+
+  const handleSeekToSegment = useCallback((segment: TranscriptSegment) => {
+    seekToRef.current?.(segment.start);
+  }, []);
+
+  const handleAddBookmark = useCallback(async (timeSec: number) => {
+    if (!id) return;
+    const mins = Math.floor(timeSec / 60);
+    const secs = timeSec % 60;
+    const label = `${mins}:${secs.toString().padStart(2, '0')}`;
+    await addBookmark(id, { time: timeSec, label });
+    showToast('Marcador agregado', 'success');
+  }, [id, addBookmark]);
+
+  const handleTogglePin = useCallback(async () => {
+    if (!id) return;
+    const wasPinned = currentNote?.is_pinned;
+    await togglePin(id);
+    hapticButtonPress();
+    showToast(wasPinned ? 'Desanclada' : 'Anclada', 'success');
+  }, [id, togglePin, currentNote?.is_pinned]);
 
   const handleSelectMode = useCallback((mode: OutputMode) => {
     setSelectedMode(mode);
@@ -207,7 +251,8 @@ export default function NoteDetailScreen() {
           </AnimatedPressable>
           <View style={styles.headerCenter}>
             <RNAnimated.Text entering={FadeInDown.delay(200)} style={styles.title} numberOfLines={2}>
-              {currentNote.title}
+              {currentNote.is_pinned && <Ionicons name="pin" size={16} color={COLORS.accentGold} />}
+              {currentNote.is_pinned ? ' ' : ''}{currentNote.title}
             </RNAnimated.Text>
             <RNAnimated.View entering={FadeInUp.delay(300)} style={styles.badgeRow}>
               {currentNote.template && (
@@ -235,14 +280,27 @@ export default function NoteDetailScreen() {
               </TouchableOpacity>
             </RNAnimated.View>
           </View>
-          <View style={{ width: 40 }} />
+          <AnimatedPressable onPress={handleTogglePin} style={styles.backBtn}>
+            <Ionicons
+              name={currentNote.is_pinned ? 'pin' : 'pin-outline'}
+              size={20}
+              color={currentNote.is_pinned ? COLORS.accentGold : 'rgba(255,255,255,0.7)'}
+            />
+          </AnimatedPressable>
         </LinearGradient>
       </RNAnimated.View>
 
       {/* Audio player (overlaps header) */}
       {signedUrl && (
         <View style={styles.playerWrap}>
-          <AudioPlayer uri={signedUrl} duration={currentNote.audio_duration} />
+          <AudioPlayer
+            uri={signedUrl}
+            duration={currentNote.audio_duration}
+            bookmarks={currentNote.bookmarks ?? []}
+            onTimeUpdate={setAudioPosition}
+            onSeekToTime={seekToRef}
+            onAddBookmark={handleAddBookmark}
+          />
         </View>
       )}
 
@@ -358,20 +416,83 @@ export default function NoteDetailScreen() {
             </View>
           )}
 
+          {/* Tags */}
+          {currentNote.tags && currentNote.tags.length > 0 && (
+            <View style={styles.tagsSection}>
+              {currentNote.tags.map((tag, i) => (
+                <View key={`${tag}-${i}`} style={styles.tagBadge}>
+                  <Text style={styles.tagBadgeText}>#{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Bookmarks list */}
+          {(currentNote.bookmarks ?? []).length > 0 && (
+            <View style={styles.bookmarksSection}>
+              <Text style={styles.bookmarksSectionTitle}>Marcadores</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {(currentNote.bookmarks ?? []).map((bm, i) => (
+                  <TouchableOpacity
+                    key={`${bm.time}-${i}`}
+                    onPress={() => seekToRef.current?.(bm.time)}
+                    onLongPress={() => {
+                      if (id) { removeBookmark(id, bm.time); showToast('Marcador eliminado', 'info'); }
+                    }}
+                    style={styles.bookmarkChip}
+                  >
+                    <Ionicons name="bookmark" size={11} color={COLORS.accentGold} />
+                    <Text style={styles.bookmarkChipText}>{bm.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Transcript toggle */}
-          <AnimatedPressable
-            onPress={() => setShowTranscript(!showTranscript)}
-            style={styles.transcriptToggle}
-          >
-            <Ionicons
-              name={showTranscript ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={COLORS.primary}
-            />
-            <Text style={styles.transcriptToggleText}>
-              {showTranscript ? 'Ocultar transcripción' : 'Ver transcripción completa'}
-            </Text>
-          </AnimatedPressable>
+          <View style={styles.transcriptToggleRow}>
+            <AnimatedPressable
+              onPress={() => setShowTranscript(!showTranscript)}
+              style={styles.transcriptToggle}
+            >
+              <Ionicons
+                name={showTranscript ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={COLORS.primary}
+              />
+              <Text style={styles.transcriptToggleText}>
+                {showTranscript ? 'Ocultar transcripción' : 'Ver transcripción completa'}
+              </Text>
+            </AnimatedPressable>
+            {showTranscript && (
+              <AnimatedPressable
+                onPress={() => setShowTranscriptSearch(!showTranscriptSearch)}
+                style={styles.transcriptSearchBtn}
+              >
+                <Ionicons name="search" size={16} color={COLORS.primaryLight} />
+              </AnimatedPressable>
+            )}
+          </View>
+
+          {/* Transcript search */}
+          {showTranscriptSearch && showTranscript && (
+            <View style={styles.transcriptSearchBar}>
+              <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.transcriptSearchInput}
+                placeholder="Buscar en transcripción..."
+                placeholderTextColor={COLORS.textMuted}
+                value={transcriptSearch}
+                onChangeText={setTranscriptSearch}
+                autoFocus
+              />
+              {transcriptSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setTranscriptSearch('')}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* Images */}
           <NoteImages noteId={id!} images={currentNote.images ?? []} />
@@ -404,9 +525,12 @@ export default function NoteDetailScreen() {
                   segments={currentNote.segments}
                   speakers={currentNote.speakers}
                   highlights={currentNote.highlights ?? []}
+                  activeSegmentIndex={activeSegmentIndex}
+                  searchQuery={transcriptSearch}
                   onRenameSpeaker={() => setShowRenameModal(true)}
                   onEditSegment={handleEditSegment}
                   onToggleHighlight={handleToggleHighlight}
+                  onSegmentPress={handleSeekToSegment}
                 />
               ) : editingTranscript ? (
                 <View style={styles.plainTranscript}>
@@ -615,10 +739,57 @@ const styles = StyleSheet.create({
   convertWrap: { alignItems: 'center', paddingVertical: 48, gap: 10 },
   convertTitle: { fontSize: 17, fontWeight: '600', color: COLORS.textSecondary },
   convertText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 40 },
+  // -- Tags section -----------------------------------------------------------
+  tagsSection: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 24, paddingVertical: 10,
+  },
+  tagBadge: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    backgroundColor: COLORS.primaryLight + '15',
+  },
+  tagBadgeText: {
+    fontSize: 12, fontWeight: '600', color: COLORS.primaryLight,
+  },
+
+  // -- Bookmarks section ------------------------------------------------------
+  bookmarksSection: {
+    paddingHorizontal: 24, paddingBottom: 8,
+  },
+  bookmarksSectionTitle: {
+    fontSize: 12, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase',
+    letterSpacing: 0.5, marginBottom: 6,
+  },
+  bookmarkChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.accentGold + '15',
+  },
+  bookmarkChipText: {
+    fontSize: 12, fontWeight: '600', color: COLORS.accentGold,
+  },
+
+  // -- Transcript toggle ------------------------------------------------------
+  transcriptToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginHorizontal: 24, borderTopWidth: 1, borderTopColor: COLORS.borderLight,
+  },
+  transcriptSearchBtn: {
+    padding: 8, borderRadius: 8,
+  },
+  transcriptSearchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 24, marginBottom: 8,
+    backgroundColor: COLORS.surfaceAlt, borderRadius: 10,
+    paddingHorizontal: 12, height: 40,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  transcriptSearchInput: {
+    flex: 1, fontSize: 14, color: COLORS.textPrimary, paddingVertical: 0,
+  },
   transcriptToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 18, marginHorizontal: 24,
-    borderTopWidth: 1, borderTopColor: COLORS.borderLight,
+    paddingVertical: 18, flex: 1,
   },
   transcriptToggleText: { fontSize: 15, color: COLORS.primary, fontWeight: '600' },
   plainTranscript: {

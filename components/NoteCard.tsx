@@ -236,8 +236,11 @@ export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCar
       >
         <AnimatedPressable onPress={handlePress} onLongPress={onLongPress} accessibilityLabel={`Nota: ${note.title}`}>
           <View style={styles.card}>
-            {/* Row 1: title + relative time */}
+            {/* Row 1: title + relative time + pin */}
             <View style={styles.topRow}>
+              {note.is_pinned && (
+                <Ionicons name="pin" size={13} color={COLORS.accentGold} style={{ marginRight: 4 }} />
+              )}
               <Text style={styles.title} numberOfLines={1}>
                 {note.title}
               </Text>
@@ -273,6 +276,20 @@ export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCar
                     <Ionicons name="checkbox-outline" size={11} color={COLORS.textMuted} />
                     <Text style={styles.infoChipText}>{note.tasks.length}</Text>
                   </View>
+                )}
+              </View>
+            )}
+
+            {/* Tags */}
+            {note.tags && note.tags.length > 0 && (
+              <View style={styles.tagRow}>
+                {note.tags.slice(0, 3).map((tag, i) => (
+                  <View key={`${tag}-${i}`} style={styles.tagChip}>
+                    <Text style={styles.tagText}>#{tag}</Text>
+                  </View>
+                ))}
+                {note.tags.length > 3 && (
+                  <Text style={styles.tagMore}>+{note.tags.length - 3}</Text>
                 )}
               </View>
             )}
@@ -397,6 +414,31 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     lineHeight: 19,
     marginTop: 4,
+  },
+
+  // -- Tags -----------------------------------------------------------------
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 8,
+  },
+  tagChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: COLORS.primaryLight + '15',
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.primaryLight,
+  },
+  tagMore: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    alignSelf: 'center',
+    marginLeft: 2,
   },
 
   // -- Info chips -----------------------------------------------------------

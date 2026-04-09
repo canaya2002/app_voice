@@ -27,9 +27,12 @@ interface SpeakerTranscriptProps {
   segments: TranscriptSegment[];
   speakers: SpeakerInfo[];
   highlights?: number[];
+  activeSegmentIndex?: number;
+  searchQuery?: string;
   onRenameSpeaker?: () => void;
   onEditSegment?: (index: number, newText: string) => void;
   onToggleHighlight?: (index: number) => void;
+  onSegmentPress?: (segment: TranscriptSegment) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,9 +74,41 @@ interface SegmentBubbleProps {
   index: number;
   narratorMode: boolean;
   highlighted: boolean;
+  isActive: boolean;
+  searchQuery?: string;
   onRenameSpeaker?: () => void;
   onEditSegment?: (index: number, newText: string) => void;
   onToggleHighlight?: (index: number) => void;
+  onSegmentPress?: (segment: TranscriptSegment) => void;
+}
+
+function HighlightedText({ text, query, color: textColor }: { text: string; query?: string; color: string }) {
+  if (!query || !query.trim()) {
+    return <Text style={[styles.bubbleText, { color: textColor }]}>{text}</Text>;
+  }
+  const parts: { text: string; match: boolean }[] = [];
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  let lastIndex = 0;
+  let pos = lower.indexOf(q, lastIndex);
+  while (pos !== -1) {
+    if (pos > lastIndex) parts.push({ text: text.slice(lastIndex, pos), match: false });
+    parts.push({ text: text.slice(pos, pos + q.length), match: true });
+    lastIndex = pos + q.length;
+    pos = lower.indexOf(q, lastIndex);
+  }
+  if (lastIndex < text.length) parts.push({ text: text.slice(lastIndex), match: false });
+  return (
+    <Text style={[styles.bubbleText, { color: textColor }]}>
+      {parts.map((p, i) =>
+        p.match ? (
+          <Text key={i} style={{ backgroundColor: COLORS.accentGold + '40', borderRadius: 2 }}>{p.text}</Text>
+        ) : (
+          <Text key={i}>{p.text}</Text>
+        ),
+      )}
+    </Text>
+  );
 }
 
 function SegmentBubble({
@@ -82,9 +117,12 @@ function SegmentBubble({
   index,
   narratorMode,
   highlighted,
+  isActive,
+  searchQuery,
   onRenameSpeaker,
   onEditSegment,
   onToggleHighlight,
+  onSegmentPress,
 }: SegmentBubbleProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [editing, setEditing] = useState(false);
@@ -169,14 +207,30 @@ function SegmentBubble({
         {/* Speech bubble */}
         <TouchableOpacity
           activeOpacity={0.8}
-          onLongPress={handleLongPress}
-          onPress={handleDoubleTap}
+          onLongPress={() => {
+            if (onToggleHighlight) {
+              hapticSelection();
+              onToggleHighlight(index);
+            } else if (onEditSegment) {
+              setDraft(segment.text);
+              setEditing(true);
+            }
+          }}
+          onPress={() => {
+            if (onSegmentPress) {
+              hapticSelection();
+              onSegmentPress(segment);
+            } else {
+              handleDoubleTap();
+            }
+          }}
           delayLongPress={400}
           style={[
             styles.bubble,
             { backgroundColor: highlighted ? COLORS.accentGold + '20' : color.bg },
             isRight ? styles.bubbleRight : styles.bubbleLeft,
             highlighted && styles.bubbleHighlighted,
+            isActive && styles.bubbleActive,
           ]}
         >
           {editing ? (
@@ -200,9 +254,12 @@ function SegmentBubble({
               </View>
             </View>
           ) : (
-            <Text style={[styles.bubbleText, { color: color.text }]}>
-              {segment.text}
-            </Text>
+            <HighlightedText text={segment.text} query={searchQuery} color={color.text} />
+          )}
+          {isActive && (
+            <View style={styles.activeIndicator}>
+              <Ionicons name="volume-high" size={10} color={COLORS.primaryLight} />
+            </View>
           )}
         </TouchableOpacity>
       </View>
@@ -218,9 +275,12 @@ export default function SpeakerTranscript({
   segments,
   speakers,
   highlights = [],
+  activeSegmentIndex,
+  searchQuery,
   onRenameSpeaker,
   onEditSegment,
   onToggleHighlight,
+  onSegmentPress,
 }: SpeakerTranscriptProps) {
   const narratorMode = isNarratorMode(speakers);
 
@@ -235,12 +295,12 @@ export default function SpeakerTranscript({
   return (
     <View>
       {/* Hint text */}
-      {(onEditSegment || onToggleHighlight) && (
+      {(onSegmentPress || onEditSegment || onToggleHighlight) && (
         <View style={styles.hintBar}>
-          {onEditSegment && (
+          {onSegmentPress && (
             <View style={styles.hintItem}>
-              <Ionicons name="create-outline" size={12} color={COLORS.textMuted} />
-              <Text style={styles.hintText}>Toca para editar</Text>
+              <Ionicons name="play-outline" size={12} color={COLORS.primaryLight} />
+              <Text style={styles.hintText}>Toca para reproducir</Text>
             </View>
           )}
           {onToggleHighlight && (
@@ -265,9 +325,12 @@ export default function SpeakerTranscript({
             index={index}
             narratorMode={narratorMode}
             highlighted={highlights.includes(index)}
+            isActive={activeSegmentIndex === index}
+            searchQuery={searchQuery}
             onRenameSpeaker={onRenameSpeaker}
             onEditSegment={onEditSegment}
             onToggleHighlight={onToggleHighlight}
+            onSegmentPress={onSegmentPress}
           />
         ))}
       </ScrollView>
@@ -379,6 +442,20 @@ const styles = StyleSheet.create({
   bubbleHighlighted: {
     borderWidth: 1,
     borderColor: COLORS.accentGold + '50',
+  },
+  bubbleActive: {
+    borderWidth: 1.5,
+    borderColor: COLORS.primaryLight,
+    shadowColor: COLORS.primaryLight,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 6,
   },
   bubbleText: {
     fontSize: 14,

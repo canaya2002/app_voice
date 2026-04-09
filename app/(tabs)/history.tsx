@@ -194,6 +194,7 @@ export default function HistoryScreen() {
         ...note.key_points, ...note.tasks,
         note.template ?? '', note.primary_mode,
         ...(note.speakers?.map(s => s.custom_name ?? s.default_name) ?? []),
+        ...(note.tags ?? []),
       ].join(' ').toLowerCase();
       const matches = words.every((w) => haystack.includes(w));
       if (!matches) return false;
@@ -206,6 +207,11 @@ export default function HistoryScreen() {
     if (filter === 'study') return note.primary_mode === 'study' || note.template === 'class';
     if (filter === 'conversations') return note.is_conversation && note.speakers_detected > 1;
     return true;
+  }).sort((a, b) => {
+    // Pinned notes always at top
+    if (a.is_pinned && !b.is_pinned) return -1;
+    if (!a.is_pinned && b.is_pinned) return 1;
+    return 0; // preserve existing order (created_at desc) within each group
   });
 
   const renderItem = ({ item, index }: { item: Note; index: number }) => {
@@ -327,7 +333,7 @@ export default function HistoryScreen() {
           <Ionicons name="search-outline" size={20} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar en notas..."
+            placeholder="Buscar en notas, transcripciones, tags..."
             placeholderTextColor={COLORS.textMuted}
             value={search}
             onChangeText={setSearch}

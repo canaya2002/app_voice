@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { deleteAudioFile } from '@/lib/transcription';
-import type { Note, ModeResult, OutputMode, MessageTone, SpeakerInfo, Folder } from '@/types';
+import type { Note, ModeResult, OutputMode, MessageTone, SpeakerInfo, Folder, Bookmark } from '@/types';
 
 interface NotesState {
   notes: Note[];
@@ -34,6 +34,9 @@ interface NotesState {
   removeShareLink: (noteId: string) => Promise<void>;
   convertMode: (noteId: string, targetMode: OutputMode, tone?: MessageTone) => Promise<ModeResult | null>;
   updateSpeakers: (noteId: string, speakers: SpeakerInfo[]) => Promise<void>;
+  togglePin: (noteId: string) => Promise<void>;
+  addBookmark: (noteId: string, bookmark: Bookmark) => Promise<void>;
+  removeBookmark: (noteId: string, time: number) => Promise<void>;
   subscribeToNote: (id: string) => () => void;
   subscribeToNotes: (userId: string) => () => void;
   retryProcessing: (noteId: string) => Promise<boolean>;
@@ -57,9 +60,12 @@ function parseNote(row: Record<string, unknown>): Note {
     primary_mode: (row.primary_mode as Note['primary_mode']) ?? 'summary',
     template: row.template as Note['template'],
     retry_count: typeof row.retry_count === 'number' ? row.retry_count : 0,
-  deleted_at: typeof row.deleted_at === 'string' ? row.deleted_at : null,
-  folder_id: typeof row.folder_id === 'string' ? row.folder_id : null,
-  share_token: typeof row.share_token === 'string' ? row.share_token : null,
+    deleted_at: typeof row.deleted_at === 'string' ? row.deleted_at : null,
+    folder_id: typeof row.folder_id === 'string' ? row.folder_id : null,
+    share_token: typeof row.share_token === 'string' ? row.share_token : null,
+    tags: Array.isArray(row.tags) ? row.tags as string[] : [],
+    is_pinned: !!row.is_pinned,
+    bookmarks: Array.isArray(row.bookmarks) ? row.bookmarks as Bookmark[] : [],
   };
 }
 
@@ -351,6 +357,64 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       set((state) => ({
         currentNote: state.currentNote?.id === noteId
           ? { ...state.currentNote, speakers }
+          : state.currentNote,
+      }));
+    }
+  },
+
+  togglePin: async (noteId: string) => {
+    const note = get().currentNote ?? get().notes.find((n) => n.id === noteId);
+    if (!note) return;
+    const newVal = !note.is_pinned;
+    const { error } = await supabase
+      .from('notes')
+      .update({ is_pinned: newVal })
+      .eq('id', noteId);
+
+    if (!error) {
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === noteId ? { ...n, is_pinned: newVal } : n),
+        currentNote: state.currentNote?.id === noteId
+          ? { ...state.currentNote, is_pinned: newVal }
+          : state.currentNote,
+      }));
+    }
+  },
+
+  addBookmark: async (noteId: string, bookmark: Bookmark) => {
+    const note = get().currentNote ?? get().notes.find((n) => n.id === noteId);
+    if (!note) return;
+    const current = note.bookmarks ?? [];
+    const updated = [...current, bookmark].sort((a, b) => a.time - b.time);
+    const { error } = await supabase
+      .from('notes')
+      .update({ bookmarks: updated })
+      .eq('id', noteId);
+
+    if (!error) {
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === noteId ? { ...n, bookmarks: updated } : n),
+        currentNote: state.currentNote?.id === noteId
+          ? { ...state.currentNote, bookmarks: updated }
+          : state.currentNote,
+      }));
+    }
+  },
+
+  removeBookmark: async (noteId: string, time: number) => {
+    const note = get().currentNote ?? get().notes.find((n) => n.id === noteId);
+    if (!note) return;
+    const updated = (note.bookmarks ?? []).filter((b) => b.time !== time);
+    const { error } = await supabase
+      .from('notes')
+      .update({ bookmarks: updated })
+      .eq('id', noteId);
+
+    if (!error) {
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === noteId ? { ...n, bookmarks: updated } : n),
+        currentNote: state.currentNote?.id === noteId
+          ? { ...state.currentNote, bookmarks: updated }
           : state.currentNote,
       }));
     }

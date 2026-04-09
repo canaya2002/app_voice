@@ -101,6 +101,15 @@ export interface Note {
   highlights?: number[];  // indexes of highlighted segments
   workspace_id?: string | null;
   images?: string[];  // storage paths to attached images
+  // v5 fields — Otter-killer features
+  tags?: string[];
+  is_pinned?: boolean;
+  bookmarks?: Bookmark[];
+}
+
+export interface Bookmark {
+  time: number;   // seconds into the audio
+  label: string;
 }
 
 // ── Mode Results ──────────────────────────────────────────────────────────────
@@ -183,6 +192,37 @@ export interface ApiKey {
   last_used?: string;
   created_at: string;
   revoked_at?: string;
+}
+
+// ── Action Items (global task inbox) ─────────────────────────────────────────
+
+export interface ActionItem {
+  id: string;
+  user_id: string;
+  note_id: string | null;
+  text: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in_progress' | 'done';
+  assignee: string | null;
+  due_date: string | null;
+  source_quote: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  // Joined fields (not in DB, enriched client-side)
+  note_title?: string;
+}
+
+// ── Chat Context ─────────────────────────────────────────────────────────────
+
+export type ChatContextType = 'all' | 'notes' | 'folder' | 'channel';
+
+export interface ChatContextSelection {
+  type: ChatContextType;
+  note_ids?: string[];
+  folder_ids?: string[];
+  channel_ids?: string[];
+  label: string;  // human-readable description of selected context
 }
 
 // ── Legacy (kept for backward compat) ─────────────────────────────────────────
