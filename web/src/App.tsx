@@ -1564,7 +1564,7 @@ function IntegrationsPage() {
       const session = (await supabase.auth.getSession()).data.session;
       if (!session) return;
       // Load Slack integration
-      const { data: slack } = await supabase.from('integrations').select('config, enabled').eq('user_id', session.user.id).eq('provider', 'slack').single();
+      const { data: slack } = await supabase.from('integrations').select('config, enabled').eq('user_id', session.user.id).eq('provider', 'slack').maybeSingle();
       if (slack) {
         setSlackUrl((slack.config as any)?.webhook_url || '');
         setSlackEnabled(slack.enabled);
@@ -1606,7 +1606,7 @@ function IntegrationsPage() {
     (async () => {
       const session = (await supabase.auth.getSession()).data.session;
       if (!session) return;
-      const { data: cal } = await supabase.from('integrations').select('enabled').eq('user_id', session.user.id).eq('provider', 'google_calendar').single();
+      const { data: cal } = await supabase.from('integrations').select('enabled').eq('user_id', session.user.id).eq('provider', 'google_calendar').maybeSingle();
       if (cal?.enabled) {
         setCalConnected(true);
         // Fetch events via direct fetch (invoke doesn't support query params)
