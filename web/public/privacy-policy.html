@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sythio — Política de Privacidad</title>
+  <style>
+    :root {
+      --bg: #FFFFFF;
+      --surface: #F5F7FA;
+      --text: #0B0B0B;
+      --text-secondary: #8A8F98;
+      --accent: #8FD3FF;
+      --border: #EBEDF0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0B0B0B;
+        --surface: #1A1A1A;
+        --text: #F5F5F5;
+        --text-secondary: #9A9FA8;
+        --accent: #8FD3FF;
+        --border: #2A2A2A;
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 40px 20px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .update-date {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-top: 36px;
+      margin-bottom: 12px;
+    }
+    p, li {
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    ul {
+      padding-left: 24px;
+      margin-bottom: 16px;
+    }
+    li { margin-bottom: 6px; }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    .highlight {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    .logo {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 32px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo">Sythio</div>
+  <h1>Política de Privacidad</h1>
+  <p class="update-date">Última actualización: 27 de marzo de 2026</p>
+
+  <p>En Sythio, tu privacidad es fundamental. Esta política explica qué datos recopilamos, cómo los usamos y con quién los compartimos cuando utilizas nuestra aplicación de notas de voz con inteligencia artificial.</p>
+
+  <h2>1. Datos que recopilamos</h2>
+  <ul>
+    <li><strong>Cuenta:</strong> Email y contraseña (encriptada) al registrarte.</li>
+    <li><strong>Audio:</strong> Grabaciones de voz que realizas dentro de la app.</li>
+    <li><strong>Transcripciones y resultados:</strong> Texto transcrito y contenido generado por IA (resúmenes, tareas, planes de acción, etc.).</li>
+    <li><strong>Datos de uso:</strong> Eventos anonimizados como cantidad de notas creadas, modos utilizados y duración de grabaciones. NO rastreamos ubicación, contactos ni contenido de otras apps.</li>
+    <li><strong>Datos de compra:</strong> Información de suscripción gestionada por Apple y RevenueCat (no almacenamos datos de tarjeta de crédito).</li>
+  </ul>
+
+  <h2>2. Procesamiento con Inteligencia Artificial</h2>
+  <div class="highlight">
+    <p><strong>Tu audio y texto son procesados por servicios de IA de terceros:</strong></p>
+    <ul>
+      <li><strong>OpenAI (Whisper)</strong> — Utilizado para transcribir el audio a texto. <a href="https://openai.com/policies/privacy-policy" target="_blank">Política de privacidad de OpenAI</a>.</li>
+      <li><strong>Anthropic (Claude)</strong> — Utilizado para generar resúmenes, tareas, planes de acción y demás resultados estructurados. <a href="https://www.anthropic.com/privacy" target="_blank">Política de privacidad de Anthropic</a>.</li>
+    </ul>
+    <p>El audio se envía a estos servicios exclusivamente para su procesamiento. No utilizamos tu contenido para entrenar modelos de IA. Consulta las políticas de cada proveedor para más detalles sobre retención de datos en sus sistemas.</p>
+  </div>
+
+  <h2>3. Almacenamiento y retención de datos</h2>
+  <ul>
+    <li><strong>Audio:</strong> Se almacena de forma segura en Supabase Storage, vinculado a tu cuenta. Se elimina cuando borras la nota o tu cuenta.</li>
+    <li><strong>Transcripciones y resultados:</strong> Almacenados en nuestra base de datos (Supabase/PostgreSQL) hasta que elimines la nota o tu cuenta.</li>
+    <li><strong>Datos de cuenta:</strong> Se conservan mientras tu cuenta esté activa.</li>
+    <li><strong>Analytics:</strong> Eventos de uso anonimizados se conservan por tiempo indefinido para mejorar el producto.</li>
+  </ul>
+
+  <h2>4. Compartición de datos</h2>
+  <p><strong>No vendemos tus datos a terceros.</strong> Solo compartimos información con:</p>
+  <ul>
+    <li><strong>OpenAI y Anthropic:</strong> Para procesamiento de audio y texto (como se describe arriba).</li>
+    <li><strong>Supabase:</strong> Infraestructura de base de datos y almacenamiento.</li>
+    <li><strong>RevenueCat:</strong> Gestión de suscripciones y compras in-app.</li>
+    <li><strong>Apple:</strong> Procesamiento de pagos a través del App Store.</li>
+  </ul>
+  <p>Ninguno de estos proveedores tiene acceso a tu contenido más allá de lo necesario para su servicio específico.</p>
+
+  <h2>5. Tus derechos</h2>
+  <ul>
+    <li><strong>Eliminar tu cuenta:</strong> Puedes eliminar tu cuenta y todos tus datos desde Perfil > Eliminar cuenta. Esta acción es permanente e irreversible.</li>
+    <li><strong>Exportar tus datos:</strong> Puedes exportar todas tus notas y resultados desde Perfil > Exportar mis datos.</li>
+    <li><strong>Acceso:</strong> Toda tu información está disponible dentro de la app en todo momento.</li>
+  </ul>
+
+  <h2>6. Seguridad</h2>
+  <p>Utilizamos encriptación en tránsito (TLS/HTTPS) para todas las comunicaciones. Las contraseñas se almacenan con hash seguro. El acceso a la base de datos está protegido con Row Level Security (RLS), lo que significa que solo puedes acceder a tus propios datos.</p>
+
+  <h2>7. Analytics</h2>
+  <p>Recopilamos eventos de uso anonimizados para entender cómo se usa la app y mejorarla. Estos eventos incluyen:</p>
+  <ul>
+    <li>Cantidad de notas creadas y modos utilizados</li>
+    <li>Duración promedio de grabaciones</li>
+    <li>Interacciones con la interfaz (pantallas visitadas, funciones usadas)</li>
+  </ul>
+  <p>NO rastreamos: ubicación, contactos, historial de navegación, ni contenido de tus notas para analytics.</p>
+
+  <h2>8. Menores de edad</h2>
+  <p>Sythio no está dirigida a menores de 13 años. No recopilamos deliberadamente información de menores.</p>
+
+  <h2>9. Cambios a esta política</h2>
+  <p>Podemos actualizar esta política ocasionalmente. Te notificaremos de cambios significativos a través de la app. La fecha de "última actualización" al inicio de este documento indica cuándo se realizó la revisión más reciente.</p>
+
+  <h2>10. Contacto</h2>
+  <p>Si tienes preguntas sobre esta política de privacidad o sobre tus datos, contáctanos en:</p>
+  <p><a href="mailto:privacy@sythio.app">privacy@sythio.app</a></p>
+
+  <hr>
+  <p style="font-size: 13px; color: var(--text-secondary);">Sythio &copy; 2026. Todos los derechos reservados.</p>
+
+</body>
+</html>

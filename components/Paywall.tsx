@@ -56,10 +56,15 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
     if (!visible) return;
     track('premium_paywall_viewed', { trigger: trigger ?? 'paywall' });
     setLoadingOffering(true);
-    getMonthlyPackage().then((p) => {
-      setPkg(p);
-      setLoadingOffering(false);
-    });
+    let cancelled = false;
+    getMonthlyPackage()
+      .then((p) => { if (!cancelled) setPkg(p); })
+      .catch((err) => {
+        if (__DEV__) console.warn('[paywall] getMonthlyPackage failed:', err);
+        if (!cancelled) setPkg(null);
+      })
+      .finally(() => { if (!cancelled) setLoadingOffering(false); });
+    return () => { cancelled = true; };
   }, [visible, trigger]);
 
   const handleSubscribe = async () => {

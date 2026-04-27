@@ -5,8 +5,9 @@
   "outputDirectory": "dist",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
+  "cleanUrls": true,
   "rewrites": [
-    { "source": "/((?!\\.well-known/).*)", "destination": "/index.html" }
+    { "source": "/((?!\\.well-known/|privacy-policy|terms).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
