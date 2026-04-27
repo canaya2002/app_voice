@@ -6,16 +6,82 @@
 
 ---
 
+## Estado actual (snapshot)
+
+**Hecho ✅**
+
+- **1.1 Stripe** — 4 productos creados (Premium $14.99/$149.99, Enterprise $29.99/$299.99), webhook en `…/stripe-webhook`, signing secret guardado, todas las price IDs en `.env`
+- **1.3 Apple Developer** — Sign In with Apple capability, Service ID `com.sythio.app.signin`, Key creada, Associated Domains, AASA en `web/public/.well-known/apple-app-site-association` con Team ID `ZR9U47SXX6`
+- **1.4 Supabase Auth** — Apple provider habilitado vía **JWS** (no `.p8` — Supabase ya no acepta key directa) + Site URL `https://sythio.app` + Redirect URLs (`sythio.app/**`, `www.sythio.app/**`, `localhost:5173/**`, `localhost:3000/**`, `sythio://**`, `exp://**`)
+- **2.1 Secrets en Supabase** — 11 secrets seteadas vía `scripts/setup-supabase-secrets.sh` (gitignored): Stripe x8, Anthropic, Groq, RevenueCat webhook secret. Verificado con `supabase secrets list` 2026-04-27.
+- **2.2 Migraciones SQL** — 15/15 sincronizadas con remote (verificado con `supabase db push` → "Remote database is up to date"). Schema completo: notes (retry_count, images), profiles (display_name, push_token, vocabulary, plan_expires_at, daily_audio_minutes), integrations table, enterprise_orgs/members, subscriptions con columnas Stripe (provider, stripe_customer_id, stripe_subscription_id) + status `past_due`. **Convención nueva:** todos los archivos de migración usan formato `YYYYMMDDHHMMSS_*.sql` (14 dígitos) — la CLI no maneja bien la mezcla de 8 y 14 dígitos. Tras renames + repair, todo quedó alineado.
+- **2.3 Edge Functions deploy** — 12/12 funciones deployadas y validadas. Creado `supabase/config.toml` con `verify_jwt = false` para 4 endpoints públicos (stripe-webhook, revenuecat-webhook, get-shared-note, public-api). Validación HTTP: stripe-webhook responde 400 "Invalid signature" (HMAC funciona), revenuecat-webhook 401 "Unauthorized" (Bearer check funciona), endpoints user-facing retornan 401 sin JWT como debe ser.
+- **Crédito Anthropic** — saldo cargado y Auto-reload activado.
+- **Validación end-to-end de Stripe** — webhook test desde Stripe Dashboard OK + flujo completo de checkout en web local OK (`profiles.plan` se actualizó a `premium` tras pago con tarjeta test) + Apple Sign In en web local OK.
+- **4.x Web deploy a Vercel + DNS** — sythio.app live, privacy-policy + terms + AASA file responden 200. Deploy manual con `vercel --prod` desde `web/`. ⚠️ Auto-deploy GitHub→Vercel no está funcionando (último auto-deploy hace 14d) — reconectar en Vercel Dashboard cuando haya tiempo.
+
+**Próximo paso recomendado** → **1.2 RevenueCat** (más bloqueante porque desbloquea TestFlight) → **3.x Mobile build / EAS** → submit a App Store.
+
+**Pendiente bloqueante 🔴**
+
+- 1.2 RevenueCat (productos en App Store Connect/Play Console + entitlements + webhook con `Bearer 807f2793...`)
+- 3.x Mobile build (EAS) → TestFlight
+- 3.3 Submit a App Store
+
+**Follow-up post-launch 🟡**
+- Reconectar GitHub → Vercel auto-deploy (Vercel Dashboard → sythio-web → Settings → Git → Connect Repository)
+
+---
+
+## ⚠️ Recordatorio crítico: el JWS de Apple expira
+
+Apple permite máximo **6 meses** de vigencia para el client secret JWT. El JWS que pegamos en Supabase hoy (2026-04-27) **expira como tarde el 2026-10-27**.
+
+Antes de esa fecha hay que:
+
+1. Generar un JWS nuevo firmando con la misma `.p8` (o crear una key nueva si la perdiste).
+2. Reemplazar el "Secret Key (for OAuth)" en Supabase → Auth → Providers → Apple.
+
+**Acción ahora:** poner recordatorio en calendario para **2026-10-15** (12 días antes para tener margen). Si el JWS expira sin reemplazo, todos los logins con Apple se rompen en producción.
+
+---
+
+## Verificación rápida — probar Apple Sign In ahora
+
+Antes de avanzar a Stripe, valida que la config de Apple + Supabase funciona end-to-end:
+
+```bash
+cd web && npm run dev
+```
+
+Abre `http://localhost:5173` → click "Continuar con Apple".
+
+**Flujo esperado:**
+
+1. Popup de Apple → completa login
+2. Redirige a `https://oewjbeqwihhzuvbsfctf.supabase.co/auth/v1/callback`
+3. De ahí regresa a `localhost:5173` autenticado
+4. En Supabase Dashboard → Authentication → Users debería aparecer un row nuevo con provider `apple`
+
+**Si falla:**
+
+- `invalid_client` → el Service ID en Supabase no coincide exactamente con el de Apple. Revisa mayúsculas/espacios.
+- `invalid_grant` → el JWS está mal formado o expirado. Verifica claims: `iss`=Team ID, `sub`=Service ID, `aud`=`https://appleid.apple.com`, `exp` futuro.
+- Redirige pero no autentica → falta `https://sythio.app/**` o `http://localhost:5173/**` en Redirect URLs de Supabase (ya están).
+
+---
+
 ## Cómo usar este documento
 
 Cada sección es un **bloque accionable**. El orden importa: las secciones de arriba son prerrequisitos de las de abajo. No saltes pasos.
 
 Convención:
+
 - 🔴 **Bloqueante** — sin esto no puedes lanzar
 - 🟡 **Importante** — debería estar antes del lanzamiento
 - 🟢 **Nice-to-have** — puede esperar a post-launch
+- ✅ **Hecho** — completado en sesiones anteriores
 - ⏱️ Tiempo estimado por bloque
-- ✅ Casilla de verificación para marcar mentalmente lo hecho
 
 ---
 
@@ -23,16 +89,18 @@ Convención:
 
 Esto se hace UNA VEZ. Son las cuentas en servicios de terceros que Sythio necesita para cobrar y autenticar.
 
-## 1.1 🔴 Stripe — pagos en web
+## 1.1 ✅ Stripe — pagos en web
 
 ⏱️ 30-45 minutos
 
 ### Por qué
+
 La app móvil cobra por App Store/Play Store (vía RevenueCat). El dashboard web (`sythio.app`) cobra con tarjeta directa vía Stripe. Sin Stripe, los usuarios web no pueden suscribirse.
 
 ### Pasos
 
 **1. Crear cuenta Stripe**
+
 - Ve a https://stripe.com/register
 - Completa el alta (puede pedir RFC o datos fiscales — usa los de tu empresa).
 - Activa tu cuenta (Stripe verifica documentación; puede tardar 1-2 días).
@@ -41,20 +109,21 @@ La app móvil cobra por App Store/Play Store (vía RevenueCat). El dashboard web
 
 En Stripe Dashboard → Products → Add product. Crea estos exactos:
 
-| Producto | Precio | Billing | Descripción |
-|----------|--------|---------|-------------|
-| Sythio Premium | $14.99 USD | Recurring monthly | Notas ilimitadas, 9 modos, chat IA |
-| Sythio Premium (anual) | $149.99 USD | Recurring yearly | 2 meses gratis vs mensual |
-| Sythio Enterprise | $29.99 USD | Recurring monthly | Workspaces, MCP, API ilimitada |
-| Sythio Enterprise (anual) | $299.99 USD | Recurring yearly | 2 meses gratis vs mensual |
+| Producto                  | Precio      | Billing           | Descripción                        |
+| ------------------------- | ----------- | ----------------- | ---------------------------------- |
+| Sythio Premium            | $14.99 USD  | Recurring monthly | Notas ilimitadas, 9 modos, chat IA |
+| Sythio Premium (anual)    | $149.99 USD | Recurring yearly  | 2 meses gratis vs mensual          |
+| Sythio Enterprise         | $29.99 USD  | Recurring monthly | Workspaces, MCP, API ilimitada     |
+| Sythio Enterprise (anual) | $299.99 USD | Recurring yearly  | 2 meses gratis vs mensual          |
 
 Para cada producto, copia el **Price ID** (formato `price_1Xxxx...`). Los necesitarás abajo.
 
 **3. Configurar el webhook**
 
 Stripe Dashboard → Developers → Webhooks → Add endpoint.
+
 - **Endpoint URL**: `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/stripe-webhook`
-  *(reemplaza `oewjbeqwihhzuvbsfctf` con tu project-ref real de Supabase si es distinto)*
+  _(reemplaza `oewjbeqwihhzuvbsfctf` con tu project-ref real de Supabase si es distinto)_
 - **Events to send**: marca estos 4:
   - `checkout.session.completed`
   - `customer.subscription.updated`
@@ -86,24 +155,29 @@ STRIPE_PRICE_ENTERPRISE_YEARLY=price_...
 ⏱️ 45-60 minutos (la primera vez)
 
 ### Por qué
+
 Apple y Google obligan a que los pagos in-app pasen por sus sistemas. RevenueCat es la capa que abstrae ambas tiendas y nos da una sola API + webhook.
 
 ### Pasos
 
 **1. Crear cuenta RevenueCat**
+
 - https://www.revenuecat.com → Sign up (gratis hasta $10K/mes de revenue)
 
 **2. Crear el proyecto**
+
 - New Project → nombre `Sythio`
 - Añadir dos apps:
   - **iOS**: `com.sythio.app` (debe coincidir con `app.json`)
   - **Android**: `com.sythio.app`
 
 **3. Conectar con App Store Connect**
+
 - Necesitas tu **App Store Connect API Key** (https://appstoreconnect.apple.com → Users and Access → Keys → App Store Connect API).
 - En RevenueCat → Project Settings → Apps → iOS app → pega Issuer ID, Key ID, P8 key.
 
 **4. Conectar con Google Play Console**
+
 - Crea una Service Account en Google Cloud Console con rol Pub/Sub Editor.
 - Descarga el JSON y súbelo a RevenueCat → Android app config.
 
@@ -112,6 +186,7 @@ Apple y Google obligan a que los pagos in-app pasen por sus sistemas. RevenueCat
 RevenueCat NO crea productos en las tiendas — los crea en App Store Connect / Play Console y los sincroniza. Así que primero ve a:
 
 **App Store Connect** → tu app → In-App Purchases:
+
 - `sythio_premium_monthly` — Auto-Renewable Subscription, $14.99/mes, grupo de suscripción `Sythio`
 - `sythio_premium_yearly` — Auto-Renewable, $149.99/año, mismo grupo
 - `sythio_enterprise_monthly` — Auto-Renewable, $29.99/mes, mismo grupo
@@ -122,6 +197,7 @@ Repite los mismos identifiers en **Play Console** → Monetize → Subscriptions
 **6. Configurar Entitlements en RevenueCat**
 
 RevenueCat → Project → Entitlements:
+
 - Crea `premium` → adjunta los 2 productos premium (monthly + yearly)
 - Crea `enterprise` → adjunta los 2 productos enterprise
 
@@ -130,6 +206,7 @@ RevenueCat → Project → Entitlements:
 **7. Configurar el Offering**
 
 RevenueCat → Offerings → crea un offering `default`:
+
 - Package `monthly` → producto `sythio_premium_monthly`
 - Package `annual` → producto `sythio_premium_yearly`
 - Para Enterprise crea un offering `enterprise` aparte si quieres mostrar paywall específico.
@@ -137,12 +214,14 @@ RevenueCat → Offerings → crea un offering `default`:
 **8. Configurar el webhook**
 
 RevenueCat → Project → Integrations → Webhooks → Add:
+
 - URL: `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/revenuecat-webhook`
 - Authorization header: `Bearer <token-secreto>` (genera uno random — guárdalo en `REVENUECAT_WEBHOOK_SECRET`)
 
 **9. Copiar las API keys públicas**
 
 RevenueCat → Project Settings → API keys → copia:
+
 - iOS API Key (formato `appl_...`)
 - Android API Key (formato `goog_...`)
 
@@ -152,20 +231,25 @@ Estas SÍ van al cliente (son public keys; no son secretos).
 
 ---
 
-## 1.3 🔴 Apple Developer — Sign In with Apple
+## 1.3 ✅ Apple Developer — Sign In with Apple **(HECHO 2026-04-27)**
 
 ⏱️ 30 minutos (si ya tienes cuenta dev de pago)
 
+> **Estado:** completado. Service ID `com.sythio.app.signin`, Key creada, AASA file desplegado con Team ID `ZR9U47SXX6`. Pasos abajo conservados como referencia para troubleshooting o si hay que regenerar credenciales.
+
 ### Por qué
+
 Apple requiere "Sign In with Apple" en cualquier app que ofrezca otros logins sociales (lo añadimos en esta sesión). Sin esto, App Store rechaza la app.
 
 ### Pasos
 
 **1. Activar la capability en tu App ID**
+
 - https://developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → tu App ID (`com.sythio.app`)
 - Marca la casilla **Sign In with Apple** → Save
 
 **2. Crear un Service ID**
+
 - Identifiers → "+" → Services IDs → Continue
 - Description: `Sythio Web Auth`
 - Identifier: `com.sythio.app.signin` (debe ser distinto del bundle ID)
@@ -176,6 +260,7 @@ Apple requiere "Sign In with Apple" en cualquier app que ofrezca otros logins so
 - Save
 
 **3. Crear una Key**
+
 - Keys → "+" → nombre `Sythio Sign In Key`
 - Marca **Sign In with Apple** → Configure → primary App ID `com.sythio.app`
 - Continue → Register
@@ -184,6 +269,7 @@ Apple requiere "Sign In with Apple" en cualquier app que ofrezca otros logins so
 - Anota tu **Team ID** (10 caracteres, está en la esquina sup-derecha del developer portal)
 
 **4. Configurar Associated Domains**
+
 - En tu App ID → Capabilities → marca Associated Domains
 - Esto permite el deep linking de `applinks:sythio.app` que ya añadimos a `app.json`
 
@@ -211,11 +297,14 @@ Reemplaza `TU_TEAM_ID` con tu Team ID real. Cuando deployes la web, Apple verifi
 
 ---
 
-## 1.4 🔴 Supabase Auth — configurar URLs y Apple provider
+## 1.4 ✅ Supabase Auth — configurar URLs y Apple provider **(HECHO 2026-04-27)**
 
 ⏱️ 15 minutos
 
+> **Estado:** completado. Apple provider habilitado vía **JWS** (la UI nueva de Supabase ya no acepta los 4 campos separados — pide directamente el JWT firmado). Site URL y Redirect URLs configurados. Recordatorio de expiración del JWS arriba (sección "Recordatorio crítico").
+
 ### Por qué
+
 Supabase necesita saber a qué dominios puede redirigir después de auth (login, password reset, OAuth callback). Si no, el flujo se rompe.
 
 ### Pasos
@@ -237,17 +326,43 @@ Supabase Dashboard → tu proyecto → Authentication → URL Configuration:
 
 Authentication → Providers → Apple → Enable.
 
-Pega los datos del paso 1.3:
-- **Service ID**: `com.sythio.app.signin`
-- **Team ID**: el de tu cuenta Apple Developer
-- **Key ID**: el del paso 1.3.3
-- **Private Key**: abre el `.p8` con un editor de texto y pega TODO el contenido (incluye `-----BEGIN PRIVATE KEY-----` y `-----END PRIVATE KEY-----`)
+> ⚠️ **Nota importante:** la UI nueva de Supabase pide un **JWS (Client Secret JWT) ya firmado**, no los 4 campos separados (`Team ID`, `Key ID`, `Private Key`). Hay que generar el JWT manualmente firmando con la `.p8`.
 
-Save.
+**Generar el JWS** (script Node de un solo uso):
+
+```js
+// Requiere: npm i jsonwebtoken
+const jwt = require("jsonwebtoken");
+const fs = require("fs");
+
+const privateKey = fs.readFileSync("./AuthKey_XXXXXXXXXX.p8"); // tu .p8
+const teamId = "ZR9U47SXX6";
+const keyId = "XXXXXXXXXX"; // 10 caracteres del Key
+const serviceId = "com.sythio.app.signin";
+
+const token = jwt.sign({}, privateKey, {
+  algorithm: "ES256",
+  expiresIn: "180d", // máximo 6 meses
+  audience: "https://appleid.apple.com",
+  issuer: teamId,
+  subject: serviceId,
+  keyid: keyId,
+});
+
+console.log(token);
+```
+
+**Pegar en Supabase:**
+
+- Authentication → Providers → Apple → Enable
+- **Client IDs**: `com.sythio.app.signin` (el Service ID)
+- **Secret Key (for OAuth)**: pega el JWT generado arriba
+- Save
 
 **3. Habilitar Google provider** (opcional pero recomendado)
 
 Si quieres mantener "Continuar con Google" en el web/Android:
+
 - https://console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0 Client IDs
 - Web application → Authorized redirect URIs: `https://oewjbeqwihhzuvbsfctf.supabase.co/auth/v1/callback`
 - Copia Client ID + Client Secret a Supabase Dashboard → Auth → Providers → Google
@@ -326,6 +441,7 @@ Deberías ver todas las claves listadas (sin valores — solo nombres).
 ⏱️ 5 minutos
 
 Hay 2 migraciones nuevas creadas en esta sesión:
+
 - `20260427_pricing_v2.sql`
 - `20260427_stripe_subscriptions.sql`
 
@@ -346,6 +462,7 @@ supabase db push
 ```
 
 Te pedirá confirmación. Escribe `y`. La migración añade:
+
 - Comentario en `profiles.plan` con el pricing nuevo
 - Columnas `stripe_customer_id`, `stripe_subscription_id`, `provider` en `subscriptions`
 - Constraint `provider IN ('revenuecat', 'stripe')`
@@ -413,6 +530,7 @@ Stripe Dashboard → Developers → Webhooks → tu endpoint → "Send test webh
 ⏱️ 20 minutos primera vez
 
 ### Por qué
+
 Expo Go no soporta `expo-apple-authentication`, `react-native-purchases`, ni el `usesAppleSignIn` capability. Tienes que hacer un **development build** (con EAS) para probar en simulador/dispositivo, y después un **production build** para subir a las stores.
 
 ### Pasos
@@ -437,6 +555,7 @@ Te asignará un `projectId`. Se guarda en `app.json` automáticamente.
 **3. Verificar `eas.json`**
 
 Ya existe en el repo. Confirma que tienes 3 perfiles:
+
 - `development` — para correr `expo run:ios` con dev client
 - `preview` — para distribuir TestFlight interno
 - `production` — para App Store
@@ -472,6 +591,7 @@ eas credentials
 ```
 
 Selecciona iOS → production → "Set up new credentials". EAS te guía:
+
 - Apple Developer account (login)
 - Distribution Certificate (lo crea por ti si no tienes)
 - Provisioning Profile (lo crea automáticamente)
@@ -500,6 +620,7 @@ Tarda ~15-20 min. Cuando termine, te da un link para descargar el `.ipa`. Instá
 **1. Subir versión y build number**
 
 Edita `app.json`:
+
 ```json
 "version": "1.0.0",        // sube si es un release nuevo
 "ios": { "buildNumber": "1" }  // sube en cada upload a TestFlight
@@ -524,6 +645,7 @@ EAS sube el build a App Store Connect. Te pide tu Apple ID y la app-specific pas
 **4. Configurar TestFlight**
 
 App Store Connect → tu app → TestFlight:
+
 - Internal Testing → añade tu propio email + el de tu equipo
 - Review Information → llena el formulario de review (si pides external testing)
 - Test Information → describe qué probar
@@ -535,6 +657,7 @@ Apple revisa el build en ~24h (más rápido en internal testing). Cuando esté a
 **6. Probar TestFlight**
 
 Instala la app de TestFlight en tu iPhone, abre Sythio, prueba TODO:
+
 - ✅ Login con Apple
 - ✅ 2FA enrollment + verify + disable
 - ✅ Grabar audio
@@ -556,6 +679,7 @@ Instala la app de TestFlight en tu iPhone, abre Sythio, prueba TODO:
 **1. Llenar metadata en App Store Connect**
 
 App Store Connect → tu app → App Store:
+
 - App Name: `Sythio`
 - Subtitle: `Voz a resultados con IA` (max 30 caracteres)
 - Privacy Policy URL: `https://sythio.app/privacy-policy`
@@ -566,6 +690,7 @@ App Store Connect → tu app → App Store:
 **2. Capturas de pantalla** (requeridas)
 
 Mínimo iPhone 6.7" (1290 × 2796 px). Te recomiendo 5 capturas que muestren:
+
 1. Pantalla de grabación (botón hero violet glow)
 2. Procesamiento (4 fases)
 3. Resultado de un modo (Reporte ejecutivo se ve premium)
@@ -575,6 +700,7 @@ Mínimo iPhone 6.7" (1290 × 2796 px). Te recomiendo 5 capturas que muestren:
 **3. App Privacy** (Privacy Nutrition Label)
 
 App Store Connect → App Privacy. Ya tenemos el desglose en `app/_layout.tsx` (líneas 33-46). Llena:
+
 - Audio Recordings → Used for App Functionality (Linked to User, NO tracking)
 - Email Address → Used for App Functionality (Linked to User)
 - User ID → Used for App Functionality
@@ -583,6 +709,7 @@ App Store Connect → App Privacy. Ya tenemos el desglose en `app/_layout.tsx` (
 **4. Submit for Review**
 
 Click "Add for Review" → "Submit for Review". Apple revisa en 24-48h. Razones comunes de rechazo:
+
 - "Sign In with Apple" no implementado correctamente → ya está OK
 - Privacy Policy no carga → confirma que `sythio.app/privacy-policy` funciona
 - Crashes → prueba MUY bien en TestFlight antes
@@ -634,6 +761,7 @@ Vercel Dashboard → Add New → Project → Import Git Repository → seleccion
 **4. Variables de entorno**
 
 Settings → Environment Variables:
+
 - `VITE_SUPABASE_URL` = `https://oewjbeqwihhzuvbsfctf.supabase.co`
 - `VITE_SUPABASE_ANON_KEY` = (el anon key de Supabase, ya está en `.env`)
 
@@ -660,6 +788,7 @@ Recomendado: Cloudflare Registrar (precio sin markup) o Namecheap.
 Vercel → tu proyecto → Settings → Domains → Add → escribe `sythio.app`.
 
 Vercel te muestra los DNS records que necesitas. Típicamente:
+
 - `A record` apuntando a `76.76.21.21`
 - O `CNAME` `cname.vercel-dns.com`
 
@@ -670,6 +799,7 @@ En Cloudflare/Namecheap → DNS → añade los records que Vercel pide.
 **4. Esperar propagación DNS**
 
 Tarda entre 5 minutos y 24 horas. Puedes verificar con:
+
 ```bash
 dig sythio.app
 nslookup sythio.app
@@ -690,6 +820,7 @@ git push
 ```
 
 Vercel re-deploya automáticamente. Verifica:
+
 ```bash
 curl https://sythio.app/.well-known/apple-app-site-association
 ```
@@ -777,11 +908,13 @@ Una semana después del soft launch sin bugs críticos:
 **Plan progresivo** (sin big bang):
 
 Sprint 2 — Semana 1:
+
 - Migrar `Paywall.tsx` (más visible) → reemplazar `Text` raw + `View` con tokens nuevos
 - Migrar `NoteCard.tsx` → cards con `Surface variant="elevated"`
 - Migrar `StateViews.tsx` → reemplazar con `EmptyState` primitive
 
 Sprint 2 — Semana 2:
+
 - Migrar todas las settings rows → `Surface` + estructura consistente
 - Reemplazar `Alert.alert()` por `Banner` o `Toast` en todo el código
 
@@ -794,6 +927,7 @@ Sprint 2 — Semana 2:
 **Estado**: schema en DB ✅, edge functions ✅, UI mobile parcial, UI web parcial.
 
 **Falta**:
+
 - Crear/editar workspaces desde web con gestión de roles (owner/admin/member)
 - Invitar miembros por email → onboarding flow
 - Ver/cancelar invites pendientes
@@ -811,6 +945,7 @@ Sprint 2 — Semana 2:
 **Falta**: en historial, multi-select notas → "Exportar X notas" → ZIP con todos los PDFs/Excel.
 
 **Implementación**:
+
 - Selector múltiple en `app/(tabs)/history.tsx` con long-press
 - Edge function nueva `batch-export` que recibe `note_ids[]` → genera ZIP en Storage → devuelve signed URL
 - Email con link al usuario cuando esté listo (uses puede tomar minutos)
@@ -820,6 +955,7 @@ Sprint 2 — Semana 2:
 ⏱️ 1 semana
 
 **Falta**:
+
 - Subir logo del workspace
 - Color primario custom (override del violet)
 - Dominio custom (`empresa.sythio.app`)
@@ -830,6 +966,7 @@ Sprint 2 — Semana 2:
 ⏱️ 5 días
 
 Hoy hay 9 templates fijos. Permitir que usuarios Premium creen los suyos:
+
 - "Mi reunión semanal" → custom prompt de IA
 - "Llamada con cliente X" → vocabulario específico
 
@@ -838,6 +975,7 @@ Hoy hay 9 templates fijos. Permitir que usuarios Premium creen los suyos:
 🟢 Estado: no implementado.
 
 Idea: agentes que actúan SOBRE tus notas. Ejemplos:
+
 - "Cada vez que termine una llamada con cliente, manda email con resumen"
 - "Cuando aparezca una tarea con deadline, créamela en Notion"
 - "Si una idea aparece 3 veces en distintas notas, alértame"
@@ -871,6 +1009,7 @@ Fix: en Supabase Dashboard → Auth → Providers → Apple → Service ID debe 
 Causa frecuente: faltan plugins en `app.json` que el build necesita.
 
 Fix: revisa que `expo-apple-authentication` esté en `plugins`:
+
 ```json
 "plugins": [
   "expo-router",
@@ -940,23 +1079,23 @@ stripe trigger checkout.session.completed
 
 Asumiendo que dedicas 4-6 horas/día:
 
-| Día | Tarea | Tiempo |
-|-----|-------|--------|
-| 1 | Fase 1.1 (Stripe) + 1.4 (Supabase Auth) | 1h |
-| 1 | Fase 1.2 (RevenueCat — productos en App Store Connect) | 2h |
-| 2 | Fase 1.3 (Apple Developer — Service ID, Key) | 1h |
-| 2 | Fase 2.1 (secrets) + 2.2 (migraciones) + 2.3 (deploy edge fns) | 1h |
-| 2 | Fase 2 — testing manual de webhooks Stripe | 30min |
-| 3 | Fase 3.1 (EAS build setup) + dev build iOS | 2h |
-| 3 | Testing en dev build (login Apple, 2FA, Stripe sandbox) | 2h |
-| 4 | Fase 3.2 (production build → TestFlight) | 1h |
-| 4 | Fase 4.1 (Vercel) + 4.2 (DNS sythio.app) | 1h |
-| 5 | Esperar review TestFlight + fixing bugs | — |
-| 6 | Fase 5 (testing pre-launch completo) | 4h |
-| 7-13 | Soft launch + iteración | — |
-| 14 | Fase 3.3 (submit App Store) | 1h |
-| 15-17 | Esperar review Apple | — |
-| 18 | Hard launch (Product Hunt etc.) | día completo |
+| Día   | Tarea                                                          | Tiempo       |
+| ----- | -------------------------------------------------------------- | ------------ |
+| 1     | Fase 1.1 (Stripe) + 1.4 (Supabase Auth)                        | 1h           |
+| 1     | Fase 1.2 (RevenueCat — productos en App Store Connect)         | 2h           |
+| 2     | Fase 1.3 (Apple Developer — Service ID, Key)                   | 1h           |
+| 2     | Fase 2.1 (secrets) + 2.2 (migraciones) + 2.3 (deploy edge fns) | 1h           |
+| 2     | Fase 2 — testing manual de webhooks Stripe                     | 30min        |
+| 3     | Fase 3.1 (EAS build setup) + dev build iOS                     | 2h           |
+| 3     | Testing en dev build (login Apple, 2FA, Stripe sandbox)        | 2h           |
+| 4     | Fase 3.2 (production build → TestFlight)                       | 1h           |
+| 4     | Fase 4.1 (Vercel) + 4.2 (DNS sythio.app)                       | 1h           |
+| 5     | Esperar review TestFlight + fixing bugs                        | —            |
+| 6     | Fase 5 (testing pre-launch completo)                           | 4h           |
+| 7-13  | Soft launch + iteración                                        | —            |
+| 14    | Fase 3.3 (submit App Store)                                    | 1h           |
+| 15-17 | Esperar review Apple                                           | —            |
+| 18    | Hard launch (Product Hunt etc.)                                | día completo |
 
 **Total**: ~3 semanas desde "todo el código listo" hasta "público en App Store".
 
@@ -974,4 +1113,4 @@ Si te trabas en cualquier paso, el patrón siempre es el mismo: **logs primero, 
 
 ---
 
-*Doc creado tras la sesión de implementación 2026-04-27. Mantenlo actualizado cuando completes pasos para no perder el hilo.*
+_Doc creado tras la sesión de implementación 2026-04-27. Mantenlo actualizado cuando completes pasos para no perder el hilo._

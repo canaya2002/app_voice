@@ -1,0 +1,31 @@
+# Supabase project config
+# https://supabase.com/docs/guides/cli/config
+
+project_id = "oewjbeqwihhzuvbsfctf"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Edge Functions — verify_jwt settings
+#
+# Default: true (Supabase gateway requires Authorization: Bearer <user_jwt>)
+# Set to false ONLY for endpoints that handle their own auth.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Stripe webhook — validates HMAC SHA-256 signature internally (STRIPE_WEBHOOK_SECRET).
+# Stripe doesn't send Supabase JWTs, so platform JWT check would always 401.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# RevenueCat webhook — validates `Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>` internally.
+# RevenueCat sends its own Bearer header, not a Supabase JWT.
+[functions.revenuecat-webhook]
+verify_jwt = false
+
+# Public shared note endpoint — accessed by anyone with the share token (in URL).
+# The function validates the share token against the DB; no user JWT required.
+[functions.get-shared-note]
+verify_jwt = false
+
+# Enterprise public API — uses custom API keys (validated against api_keys table).
+# Callers are external services, not authenticated Supabase users.
+[functions.public-api]
+verify_jwt = false

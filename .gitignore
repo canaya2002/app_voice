@@ -35,6 +35,9 @@ yarn-error.*
 .env.*
 !.env.example
 
+# secrets-loaded scripts (contienen credenciales live)
+scripts/setup-supabase-secrets.sh
+
 # typescript
 *.tsbuildinfo
 
