@@ -4,7 +4,7 @@ Connect your Sythio voice notes to Claude Desktop, ChatGPT, Cursor, and other AI
 
 ## Setup
 
-1. Get your API key from [sythio.com](https://sythio.com) → Profile → Integrations → API Key
+1. Get your API key from [sythio.app](https://sythio.app) → Profile → Integrations → API Key
 2. Install: `npm install -g sythio-mcp`
 3. Add to your AI tool config:
 

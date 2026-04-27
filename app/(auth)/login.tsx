@@ -8,7 +8,9 @@ import {
   Alert,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -34,7 +36,7 @@ import AnimatedPressable from '@/components/AnimatedPressable';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, loading, error, clearError, mfaRequired, verifyMfa } = useAuthStore();
+  const { login, loading, error, clearError, mfaRequired, verifyMfa, signInWithApple } = useAuthStore();
   const [mfaCode, setMfaCode] = useState('');
   const passwordRef = useRef<TextInput>(null);
 
@@ -226,22 +228,22 @@ export default function LoginScreen() {
               <Text style={styles.dividerText}>o continúa con</Text>
               <View style={styles.dividerLine} />
             </View>
-            <View style={styles.socialRow}>
-              <TouchableOpacity
-                style={styles.socialBtn}
-                activeOpacity={0.7}
+
+            {/* Apple — native button on iOS, OAuth elsewhere. Apple guidelines require it first. */}
+            {Platform.OS === 'ios' ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={14}
+                style={styles.appleNativeBtn}
                 onPress={async () => {
-                  const redirectUrl = Linking.createURL('/(tabs)');
-                  const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: { redirectTo: redirectUrl },
-                  });
-                  if (error) showToast('Error con Google: ' + error.message, 'error');
+                  const result = await signInWithApple();
+                  if (!result.ok && !result.cancelled) {
+                    showToast(result.error ?? 'No se pudo iniciar sesión con Apple', 'error');
+                  }
                 }}
-              >
-                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                <Text style={styles.socialBtnText}>Google</Text>
-              </TouchableOpacity>
+              />
+            ) : (
               <TouchableOpacity
                 style={styles.socialBtn}
                 activeOpacity={0.7}
@@ -255,9 +257,25 @@ export default function LoginScreen() {
                 }}
               >
                 <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
-                <Text style={styles.socialBtnText}>Apple</Text>
+                <Text style={styles.socialBtnText}>Continuar con Apple</Text>
               </TouchableOpacity>
-            </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.socialBtn}
+              activeOpacity={0.7}
+              onPress={async () => {
+                const redirectUrl = Linking.createURL('/(tabs)');
+                const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: { redirectTo: redirectUrl },
+                });
+                if (error) showToast('Error con Google: ' + error.message, 'error');
+              }}
+            >
+              <Ionicons name="logo-google" size={20} color="#DB4437" />
+              <Text style={styles.socialBtnText}>Continuar con Google</Text>
+            </TouchableOpacity>
           </Animated.View>
 
           {/* Link */}
@@ -276,9 +294,9 @@ export default function LoginScreen() {
 
           {/* Legal */}
           <Text style={styles.legalText}>
-            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/terms')}>Términos</Text>
+            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.app/terms')}>Términos</Text>
             {'  ·  '}
-            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/privacy-policy')}>Privacidad</Text>
+            <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.app/privacy-policy')}>Privacidad</Text>
           </Text>
         </ScrollView>
     </SafeAreaView>
@@ -434,16 +452,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   socialBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 50,
+    height: 52,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
+  },
+  appleNativeBtn: {
+    width: '100%',
+    height: 52,
   },
   socialBtnText: {
     fontSize: 15,

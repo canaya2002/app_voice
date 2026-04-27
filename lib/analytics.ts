@@ -59,7 +59,8 @@ export type AnalyticsEvent =
   | 'result_exported_docx'
   | 'share_link_created'
   | 'segment_highlighted'
-  | 'api_key_generated';
+  | 'api_key_generated'
+  | 'mode_selected';
 
 type EventProperties = Record<string, string | number | boolean | null>;
 

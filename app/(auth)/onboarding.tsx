@@ -24,6 +24,7 @@ import Animated, {
   FadeInUp,
   FadeInDown,
   runOnJS,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -396,7 +397,7 @@ function TransitionOverlay({ expanding, onDone }: { expanding: boolean; onDone: 
 // Dot + PageDots
 // ---------------------------------------------------------------------------
 
-function Dot({ index, pageIndicator }: { index: number; pageIndicator: Animated.SharedValue<number> }) {
+function Dot({ index, pageIndicator }: { index: number; pageIndicator: SharedValue<number> }) {
   const anim = useAnimatedStyle(() => {
     const isActive = Math.round(pageIndicator.value) === index;
     return {
@@ -408,7 +409,7 @@ function Dot({ index, pageIndicator }: { index: number; pageIndicator: Animated.
   return <Animated.View style={[screenS.dot, anim]} />;
 }
 
-function PageDots({ pageIndicator, visible }: { pageIndicator: Animated.SharedValue<number>; visible: boolean }) {
+function PageDots({ pageIndicator, visible }: { pageIndicator: SharedValue<number>; visible: boolean }) {
   const op = useSharedValue(1);
   useEffect(() => {
     op.value = withTiming(visible ? 1 : 0, { duration: 350, easing: Easing.inOut(Easing.ease) });

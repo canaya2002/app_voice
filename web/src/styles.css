@@ -44,8 +44,18 @@
   --accent-glow: rgba(0, 0, 0, 0.06);
   --accent-text: #111111;
 
-  --violet: #8b5cf6;
-  --violet-glow: rgba(139, 92, 246, 0.08);
+  /* Sythio brand violet — aligned with mobile design tokens (lib/design/tokens.ts) */
+  --violet-50: #f4f1ff;
+  --violet-100: #e9e2ff;
+  --violet-200: #d3c5ff;
+  --violet-300: #b69dff;
+  --violet-400: #9670ff;
+  --violet: #7847ff;
+  --violet-500: #7847ff;
+  --violet-600: #5f2be0;
+  --violet-700: #4a1fb3;
+  --violet-glow: rgba(120, 71, 255, 0.18);
+  --violet-glow-strong: rgba(120, 71, 255, 0.32);
 
   --amber: #f59e0b;
   --amber-glow: rgba(245, 158, 11, 0.06);
@@ -2297,4 +2307,227 @@ textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PREMIUM POLISH LAYER — overrides + new utilities (added 2026-04-27)
+   Apple-grade refinements applied without rewriting the base. Keep these
+   at the bottom so they win the cascade.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* 1. Body typography — tighter, sharper at large sizes */
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
+  text-rendering: optimizeLegibility;
+}
+
+/* 2. Pricing — promote violet as the brand CTA color */
+.pricing-badge {
+  background: var(--violet-50) !important;
+  border-color: rgba(120, 71, 255, 0.18) !important;
+  color: var(--violet-600) !important;
+}
+
+.pricing-btn.primary {
+  background: var(--violet) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 24px var(--violet-glow), 0 1px 0 rgba(255,255,255,0.06) inset !important;
+  letter-spacing: -0.01em;
+}
+.pricing-btn.primary:hover {
+  background: var(--violet-600) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 36px var(--violet-glow-strong), 0 1px 0 rgba(255,255,255,0.06) inset !important;
+}
+.pricing-btn.primary:active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+
+/* 3. Premium button utility — used for new Stripe / Apple SSO CTAs */
+.btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--violet);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  border: none;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-spring),
+              background var(--duration-base) var(--ease-out),
+              box-shadow var(--duration-base) var(--ease-out);
+  box-shadow: 0 6px 20px var(--violet-glow);
+}
+.btn-accent:hover {
+  background: var(--violet-600);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px var(--violet-glow-strong);
+}
+.btn-accent:active { transform: translateY(0); }
+
+.btn-accent-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  height: 48px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  border: 1.5px solid var(--border-strong);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-accent-ghost:hover {
+  border-color: var(--violet);
+  color: var(--violet-600);
+  background: var(--violet-50);
+}
+
+/* 4. Selection color — premium touch */
+::selection {
+  background: var(--violet-100) !important;
+  color: var(--violet-700) !important;
+}
+
+/* 5. Focus rings — accessible + branded */
+:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible {
+  outline-offset: 4px;
+}
+
+/* 6. Premium card lift on hover */
+.surface-elevated {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 24px;
+  transition: transform var(--duration-base) var(--ease-out),
+              box-shadow var(--duration-base) var(--ease-out),
+              border-color var(--duration-base) var(--ease-out);
+}
+.surface-elevated:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 7. Pricing card variants for the new tiered layout */
+.pricing-tier {
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  position: relative;
+  transition: all var(--duration-base) var(--ease-out);
+}
+.pricing-tier.featured {
+  border-color: var(--violet);
+  box-shadow: 0 16px 48px var(--violet-glow), 0 0 0 1px var(--violet) inset;
+  transform: translateY(-8px);
+}
+.pricing-tier:not(.featured):hover {
+  border-color: var(--border-strong);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+.pricing-tier__name {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+.pricing-tier__price {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.pricing-tier__price-note {
+  font-size: 14px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+.pricing-tier__features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.pricing-tier__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.pricing-tier__feature::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--violet-50);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%237847ff'><path d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06l3.04 3.04 6.72-6.72a.75.75 0 011.06 0z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px;
+}
+
+/* 8. Subtle gradient background for hero areas */
+.hero-gradient-bg {
+  background:
+    radial-gradient(circle at 15% 0%, var(--violet-50) 0%, transparent 45%),
+    radial-gradient(circle at 85% 100%, rgba(120,71,255,0.04) 0%, transparent 45%),
+    var(--bg);
+}
+
+/* 9. Scrollbar polish */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text3);
+}
+
+/* 10. Disable tap highlight for clean mobile feel */
+* {
+  -webkit-tap-highlight-color: transparent;
 }

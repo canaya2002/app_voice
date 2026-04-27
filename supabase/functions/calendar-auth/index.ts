@@ -50,7 +50,7 @@ serve(async (req: Request) => {
     // ── Step 1: Redirect to Google ──
     case "authorize": {
       const userId = url.searchParams.get("user_id");
-      const returnUrl = url.searchParams.get("return_url") || "https://sythio.com";
+      const returnUrl = url.searchParams.get("return_url") || "https://sythio.app";
       if (!userId) return new Response("user_id required", { status: 400 });
 
       const state = btoa(JSON.stringify({ user_id: userId, return_url: returnUrl }));

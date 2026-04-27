@@ -1340,7 +1340,7 @@ function SharedNotePage() {
             <span className="shared-stars">★★★★★</span>
             <span>4.8/5 — 347 valoraciones</span>
           </div>
-          <a href="https://sythio.com" className="shared-cta-btn">{t('shared.tryFree')}</a>
+          <a href="https://sythio.app" className="shared-cta-btn">{t('shared.tryFree')}</a>
         </div>
         <div className="shared-testimonials">
           {TESTIMONIALS.slice(0, 2).map((t, i) => (

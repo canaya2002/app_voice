@@ -13,6 +13,28 @@ import {
   type SubscriptionInfo,
 } from '../lib/subscription';
 
+// Stripe Checkout — invokes the stripe-checkout edge function and redirects.
+async function handleStripeCheckout(
+  tier: 'premium' | 'enterprise',
+  interval: 'month' | 'year',
+  toast: (msg: string, type?: 'success' | 'error' | 'info') => void,
+) {
+  try {
+    const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+      body: { tier, interval },
+    });
+    if (error) throw error;
+    if (data?.checkoutUrl) {
+      window.location.href = data.checkoutUrl;
+      return;
+    }
+    toast('No se pudo iniciar el pago. Inténtalo de nuevo.', 'error');
+  } catch (err) {
+    console.error('[stripe-checkout] error:', err);
+    toast('Error al iniciar el pago. Contacta soporte si persiste.', 'error');
+  }
+}
+
 // ── Settings Page ───────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { toast, showConfirm } = useToast();
@@ -237,21 +259,16 @@ export default function SettingsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                 <UpgradeCard
                   name="Premium"
-                  price="$15/mo"
-                  features={['Unlimited notes', 'Audio up to 30 min', 'All 9 AI modes', 'AI Chat', 'Export all formats']}
+                  price="$14.99/mo"
+                  features={['Unlimited notes', 'Audio up to 30 min', 'All 9 AI modes', 'AI Chat', 'Export all formats', 'Personal API']}
                   featured
-                  onSelect={() => {
-                    // TODO: Replace with Stripe Checkout URL when configured
-                    window.open('https://sythio.com/pricing', '_blank');
-                  }}
+                  onSelect={() => handleStripeCheckout('premium', 'month', toast)}
                 />
                 <UpgradeCard
                   name="Enterprise"
-                  price={t('settings.customPrice')}
-                  features={['Everything in Premium', 'Unlimited workspaces', 'Admin dashboard', 'API access', 'Priority support', 'Unlimited members']}
-                  onSelect={() => {
-                    window.open('https://sythio.com/enterprise', '_blank');
-                  }}
+                  price="$29.99/mo"
+                  features={['Everything in Premium', 'Workspaces & teams', 'API access (unlimited)', 'MCP for Claude/Cursor', 'Audio up to 60 min', 'Priority support']}
+                  onSelect={() => handleStripeCheckout('enterprise', 'month', toast)}
                 />
               </div>
             </div>
@@ -360,24 +377,17 @@ function UpgradeCard({ name, price, features, featured, onSelect }: {
 }) {
   const { t } = useI18n();
   return (
-    <div style={{
-      padding: '28px 24px',
-      borderRadius: 'var(--radius-lg)',
-      background: 'var(--surface)',
-      border: featured ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
-      boxShadow: featured ? 'var(--shadow-glow)' : 'var(--shadow-sm)',
-    }}>
-      {featured && <div className="pricing-badge" style={{ marginBottom: 12 }}>{t('settings.mostPopular')}</div>}
-      <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{name}</h3>
-      <p style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: -1, marginBottom: 20 }}>{price}</p>
-      <ul style={{ listStyle: 'none', padding: 0, marginBottom: 24 }}>
+    <div className={`pricing-tier ${featured ? 'featured' : ''}`}>
+      {featured && <div className="pricing-badge">{t('settings.mostPopular')}</div>}
+      <h3 className="pricing-tier__name">{name}</h3>
+      <p className="pricing-tier__price">{price}</p>
+      <p className="pricing-tier__price-note">Cancela cuando quieras</p>
+      <ul className="pricing-tier__features">
         {features.map((f, i) => (
-          <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 14, color: 'var(--text2)' }}>
-            <span style={{ color: 'var(--success)', fontWeight: 700 }}>✓</span> {f}
-          </li>
+          <li key={i} className="pricing-tier__feature">{f}</li>
         ))}
       </ul>
-      <button className={`pricing-btn ${featured ? 'primary' : 'secondary'}`} style={{ width: '100%' }} onClick={onSelect}>
+      <button className={`pricing-btn ${featured ? 'primary' : 'secondary'}`} onClick={onSelect}>
         {t('settings.choose')} {name}
       </button>
     </div>

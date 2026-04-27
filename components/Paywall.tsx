@@ -18,6 +18,7 @@ import { getMonthlyPackage, purchasePackage, restorePurchases } from '@/lib/purc
 import { useAuthStore } from '@/stores/authStore';
 import AnimatedPressable from '@/components/AnimatedPressable';
 import { showToast } from '@/components/Toast';
+import { PRICING, PRICING_COPY, formatPrice } from '@/lib/pricing';
 
 /** Local type to avoid importing react-native-purchases (crashes Expo Go) */
 interface RCPackage {
@@ -37,7 +38,8 @@ interface PaywallProps {
 const BENEFITS = [
   { icon: 'infinite-outline' as const, title: 'Notas ilimitadas', desc: 'Sin límite diario de grabaciones' },
   { icon: 'time-outline' as const, title: 'Audios de hasta 30 min', desc: 'Graba reuniones completas sin cortes' },
-  { icon: 'layers-outline' as const, title: 'Los 8 modos de salida', desc: 'Action Plan, Executive Report, Study y más' },
+  { icon: 'layers-outline' as const, title: 'Los 9 modos de salida', desc: 'Plan de acción, reporte ejecutivo, estudio y más' },
+  { icon: 'chatbubbles-outline' as const, title: 'Chat con IA', desc: 'Pregunta lo que sea sobre tus notas' },
   { icon: 'grid-outline' as const, title: 'Exportación avanzada', desc: 'PDF, Excel y compartir por modo' },
   { icon: 'sparkles-outline' as const, title: 'Reconversiones ilimitadas', desc: 'Un audio, todos los formatos que necesites' },
 ];
@@ -106,8 +108,8 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
     onClose();
   };
 
-  // Price from RevenueCat or fallback
-  const priceLabel = pkg?.product?.priceString ?? '$4.99';
+  // Price from RevenueCat or fallback to lib/pricing.ts
+  const priceLabel = pkg?.product?.priceString ?? formatPrice(PRICING.premium.priceMonthly);
   const introOffer = pkg?.product?.introPrice;
   const hasFreeTrial = introOffer && introOffer.price === 0;
 
@@ -124,8 +126,8 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
             {/* Header */}
             <View style={styles.header}>
               <Ionicons name="diamond" size={32} color={COLORS.primaryLight} />
-              <Text style={styles.title}>Sythio Premium</Text>
-              <Text style={styles.subtitle}>Desbloquea todo el poder de tu voz.</Text>
+              <Text style={styles.title}>{PRICING_COPY.premium.title}</Text>
+              <Text style={styles.subtitle}>{PRICING_COPY.premium.subtitle}</Text>
             </View>
 
             {/* Benefits */}
@@ -198,9 +200,9 @@ export default function Paywall({ visible, onClose, trigger }: PaywallProps) {
               El pago se cargará a tu cuenta de Apple. La suscripción ({priceLabel}/mes) se renueva automáticamente a menos que se cancele al menos 24 horas antes del fin del período actual. Gestiona tu suscripción desde Configuración {'>'} Apple ID {'>'} Suscripciones.
             </Text>
             <Text style={styles.legalLinks}>
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/terms')}>Términos</Text>
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.app/terms')}>Términos</Text>
               {'  ·  '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.com/privacy-policy')}>Privacidad</Text>
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://sythio.app/privacy-policy')}>Privacidad</Text>
             </Text>
           </ScrollView>
         </View>

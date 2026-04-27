@@ -1,6 +1,7 @@
 import { useColorScheme } from 'react-native';
 import type { OutputMode, NoteTemplate } from '@/types';
 import { useThemeStore } from '@/stores/themeStore';
+import { PRICING } from '@/lib/pricing';
 
 export const COLORS = {
   // Core brand — monochrome neutral (aligned with web)
@@ -95,13 +96,16 @@ export function useIsDark(): boolean {
   return systemScheme === 'dark';
 }
 
+// Limits derive from lib/pricing.ts — single source of truth. See lib/pricing.ts for full tier configs.
 export const LIMITS = {
-  FREE_DAILY_NOTES: 2,
-  PREMIUM_DAILY_NOTES: Infinity,
-  FREE_MAX_AUDIO_DURATION: 600,       // 10 min
-  PREMIUM_MAX_AUDIO_DURATION: 1800,   // 30 min
-  PREMIUM_MAX_DAILY_AUDIO_MINUTES: 120, // 120 min/day cap for premium
-  MAX_AUDIO_DURATION: 600,            // default (overridden by plan)
+  FREE_DAILY_NOTES: PRICING.free.notesPerDay,
+  PREMIUM_DAILY_NOTES: PRICING.premium.notesPerDay,
+  ENTERPRISE_DAILY_NOTES: PRICING.enterprise.notesPerDay,
+  FREE_MAX_AUDIO_DURATION: PRICING.free.maxDurationSec,           // 10 min
+  PREMIUM_MAX_AUDIO_DURATION: PRICING.premium.maxDurationSec,     // 30 min
+  ENTERPRISE_MAX_AUDIO_DURATION: PRICING.enterprise.maxDurationSec, // 60 min
+  PREMIUM_MAX_DAILY_AUDIO_MINUTES: 120,
+  MAX_AUDIO_DURATION: PRICING.free.maxDurationSec,
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   MAX_TRANSCRIPT_CHARS: 15000,
 };
@@ -130,18 +134,33 @@ export interface ModeConfig {
   icon: string;
   description: string;
   excelExport: boolean;
+  /** Hero modes are shown first in selection UI; secondary modes go in "Más modos" sheet. */
+  tier: 'hero' | 'secondary';
 }
 
+/**
+ * Hero modes — first visible options in selection UI.
+ *
+ * Why these three:
+ *   - summary: universal entry point, lowest friction
+ *   - tasks: most obvious actionable mode
+ *   - executive_report: the premium-feel mode that justifies upgrading
+ *
+ * Order matters — first chip is the default selection.
+ */
+export const HERO_MODES: OutputMode[] = ['summary', 'tasks', 'executive_report'];
+export const SECONDARY_MODES: OutputMode[] = ['action_plan', 'clean_text', 'ready_message', 'study', 'ideas', 'outline'];
+
 export const MODE_CONFIGS: ModeConfig[] = [
-  { id: 'summary', label: 'Resumen', icon: 'document-text-outline', description: 'Dime de qué trató', excelExport: true },
-  { id: 'tasks', label: 'Tareas', icon: 'checkbox-outline', description: 'Sácame todo lo pendiente', excelExport: true },
-  { id: 'action_plan', label: 'Plan de acción', icon: 'map-outline', description: 'Aterrízamelo en pasos', excelExport: true },
-  { id: 'clean_text', label: 'Texto limpio', icon: 'create-outline', description: 'Déjamelo presentable', excelExport: true },
-  { id: 'executive_report', label: 'Reporte ejecutivo', icon: 'briefcase-outline', description: 'Hazme un reporte serio', excelExport: true },
-  { id: 'ready_message', label: 'Mensaje listo', icon: 'send-outline', description: 'Dame algo para enviar', excelExport: true },
-  { id: 'study', label: 'Estudio', icon: 'school-outline', description: 'Conviértelo en material', excelExport: true },
-  { id: 'ideas', label: 'Ideas', icon: 'bulb-outline', description: 'Ordena esta idea', excelExport: true },
-  { id: 'outline', label: 'Outline', icon: 'list-outline', description: 'Estructura jerárquica', excelExport: true },
+  { id: 'summary', label: 'Resumen', icon: 'document-text-outline', description: 'Dime de qué trató', excelExport: true, tier: 'hero' },
+  { id: 'tasks', label: 'Tareas', icon: 'checkbox-outline', description: 'Sácame todo lo pendiente', excelExport: true, tier: 'hero' },
+  { id: 'executive_report', label: 'Reporte ejecutivo', icon: 'briefcase-outline', description: 'Hazme un reporte serio', excelExport: true, tier: 'hero' },
+  { id: 'action_plan', label: 'Plan de acción', icon: 'map-outline', description: 'Aterrízamelo en pasos', excelExport: true, tier: 'secondary' },
+  { id: 'clean_text', label: 'Texto limpio', icon: 'create-outline', description: 'Déjamelo presentable', excelExport: true, tier: 'secondary' },
+  { id: 'ready_message', label: 'Mensaje listo', icon: 'send-outline', description: 'Dame algo para enviar', excelExport: true, tier: 'secondary' },
+  { id: 'study', label: 'Estudio', icon: 'school-outline', description: 'Conviértelo en material', excelExport: true, tier: 'secondary' },
+  { id: 'ideas', label: 'Ideas', icon: 'bulb-outline', description: 'Ordena esta idea', excelExport: true, tier: 'secondary' },
+  { id: 'outline', label: 'Outline', icon: 'list-outline', description: 'Estructura jerárquica', excelExport: true, tier: 'secondary' },
 ];
 
 export interface TemplateConfig {

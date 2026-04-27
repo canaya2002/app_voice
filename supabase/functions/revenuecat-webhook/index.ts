@@ -26,6 +26,20 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("REVENUECAT_WEBHOOK_SECRET") ?? "";
 
+// Product ID convention: sythio_<tier>_<interval>
+// e.g. sythio_premium_monthly, sythio_enterprise_yearly
+function tierFromProductId(productId: string | null): "premium" | "enterprise" {
+  if (productId && productId.includes("enterprise")) return "enterprise";
+  return "premium";
+}
+
+function priceCentsFromProductId(productId: string | null): number {
+  if (!productId) return 1499;
+  const yearly = productId.includes("yearly");
+  if (productId.includes("enterprise")) return yearly ? 29999 : 2999;
+  return yearly ? 14999 : 1499;
+}
+
 serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -76,7 +90,7 @@ serve(async (req: Request) => {
 
     // ── Map RevenueCat event to subscription state ───────────────────
     let status: string;
-    let plan = "premium"; // Default — RevenueCat only handles premium for now
+    const plan = tierFromProductId(productId);
 
     switch (eventType) {
       case "INITIAL_PURCHASE":
@@ -88,12 +102,14 @@ serve(async (req: Request) => {
         status = "cancelled";
         break;
       case "EXPIRATION":
-      case "BILLING_ISSUE":
         status = "expired";
+        break;
+      case "BILLING_ISSUE":
+        // Grace period — user keeps entitlement until period_end naturally passes.
+        status = "past_due";
         break;
       case "PRODUCT_CHANGE":
         status = "active";
-        // If product changes in the future, map product_id to plan here
         break;
       case "TEST":
         // RevenueCat test event — acknowledge without processing
@@ -113,13 +129,14 @@ serve(async (req: Request) => {
     const { error: upsertErr } = await admin.from("subscriptions").upsert(
       {
         user_id: userId,
+        provider: "revenuecat",
         platform,
         plan,
         status,
         product_id: productId,
         current_period_start: periodStart,
         current_period_end: periodEnd,
-        price_cents: 1500, // $15 premium
+        price_cents: priceCentsFromProductId(productId),
         currency: "usd",
         updated_at: new Date().toISOString(),
       },

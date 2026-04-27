@@ -116,7 +116,10 @@ eas submit --platform ios --profile preview
 | **Total per note** | | **~$0.0093** |
 
 ### Break-even analysis (updated):
-- Revenue per premium user: $4.99/month → net $3.49 after Apple 30%
+- Revenue per Premium user (mobile): $14.99/month → net $10.49 after Apple 30%
+- Revenue per Premium user (web/Stripe): $14.99/month → net $14.55 after Stripe ~3%
+- Revenue per Enterprise user (mobile): $29.99/month → net $20.99 after Apple 30%
+- Revenue per Enterprise user (web/Stripe): $29.99/month → net $29.10 after Stripe ~3%
 - Free user (2/day): 60 notes × $0.0093 = $0.56/month (pure burn)
 - Premium user avg (3/day): 90 notes × $0.0093 = $0.84/month → **$2.65 profit**
 - Premium power user (120min/day): ~$6.70/month → **still profitable at -$3.21 but rare**

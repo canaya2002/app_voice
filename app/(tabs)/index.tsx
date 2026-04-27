@@ -375,7 +375,7 @@ export default function HomeScreen() {
               }}
             >
               <View style={styles.bigRecordButton}>
-                <Ionicons name="mic" size={36} color="#FFFFFF" />
+                <Ionicons name="mic" size={40} color="#FFFFFF" />
               </View>
             </AnimatedPressable>
           </Animated.View>
@@ -571,17 +571,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryLight,
   },
   bigRecordButton: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowColor: COLORS.primaryLight,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    elevation: 14,
   },
   recordHint: {
     marginTop: 12,

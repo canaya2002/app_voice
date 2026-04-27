@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   Easing,
   interpolate,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { FONT } from '@/lib/styles';
 
@@ -40,7 +41,7 @@ export default function LoadingScreen() {
 
   // Loading dots
   useEffect(() => {
-    const animate = (sv: Animated.SharedValue<number>, delay: number) => {
+    const animate = (sv: SharedValue<number>, delay: number) => {
       sv.value = withRepeat(
         withSequence(
           withTiming(0, { duration: delay }),

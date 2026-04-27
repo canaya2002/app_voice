@@ -38,9 +38,9 @@ import {
   hapticCopyClipboard,
 } from '@/lib/haptics';
 
-const PRIVACY_URL = 'https://sythio.com/privacy-policy';
-const TERMS_URL = 'https://sythio.com/terms';
-const SUPPORT_EMAIL = 'soporte@sythio.com';
+const PRIVACY_URL = 'https://sythio.app/privacy-policy';
+const TERMS_URL = 'https://sythio.app/terms';
+const SUPPORT_EMAIL = 'soporte@sythio.app';
 
 // ---------------------------------------------------------------------------
 // Glass card wrapper
@@ -285,13 +285,10 @@ export default function MenuScreen() {
           <SectionHeader icon="settings" title="CONFIGURACION" />
           <MenuRow
             icon="shield-checkmark-outline"
-            label="Seguridad (2FA)"
-            subtitle={mfaEnabled ? 'Activada' : 'No activada'}
-            color={COLORS.success}
-            onPress={() => {
-              // TODO: Navigate to dedicated 2FA screen
-              showToast(mfaEnabled ? '2FA esta activada' : 'Activa 2FA desde Perfil', 'info');
-            }}
+            label="Verificación en 2 pasos"
+            subtitle={mfaEnabled ? 'Activada — gestionar' : 'No activada — activar ahora'}
+            color={mfaEnabled ? COLORS.success : COLORS.textPrimary}
+            onPress={() => router.push('/security/two-factor' as any)}
           />
           <View style={styles.vocabSection}>
             <View style={styles.vocabHeader}>

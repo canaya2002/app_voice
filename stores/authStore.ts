@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '@/lib/supabase';
 import type { User } from '@/types';
 import type { Session } from '@supabase/supabase-js';
@@ -20,6 +22,7 @@ interface AuthState {
   clearError: () => void;
   fetchProfile: () => Promise<void>;
   setPlan: (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => void;
+  signInWithApple: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -177,6 +180,51 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  signInWithApple: async () => {
+    if (Platform.OS !== 'ios') {
+      return { ok: false, error: 'Apple Sign In solo está disponible en iOS.' };
+    }
+    set({ loading: true, error: null });
+    try {
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        set({ loading: false });
+        return { ok: false, error: 'Apple Sign In no está disponible en este dispositivo.' };
+      }
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        set({ loading: false, error: 'Apple no devolvió un token válido.' });
+        return { ok: false, error: 'Apple no devolvió un token válido.' };
+      }
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (error) {
+        set({ loading: false, error: error.message });
+        return { ok: false, error: error.message };
+      }
+      // After Supabase issues a session, fetch the profile
+      await get().fetchProfile();
+      set({ loading: false });
+      return { ok: true };
+    } catch (err: any) {
+      set({ loading: false });
+      // ERR_REQUEST_CANCELED → user cancelled the sheet
+      if (err?.code === 'ERR_REQUEST_CANCELED' || err?.code === 'ERR_CANCELED') {
+        return { ok: false, cancelled: true };
+      }
+      const msg = err?.message ?? 'Error con Apple Sign In.';
+      set({ error: msg });
+      return { ok: false, error: msg };
+    }
+  },
 
   setPlan: async (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => {
     const { user, session } = get();

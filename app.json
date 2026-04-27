@@ -13,13 +13,19 @@
       "bundleIdentifier": "com.sythio.app",
       "buildNumber": "1",
       "requireFullScreen": true,
+      "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:sythio.app"
+      ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Sythio usa el micrófono para grabar notas de voz, reuniones e ideas. El audio se procesa con IA para generar resúmenes, tareas y reportes.",
         "NSPhotoLibraryUsageDescription": "Sythio necesita acceso a tus fotos para que puedas establecer una foto de perfil personalizada.",
         "NSCameraUsageDescription": "Sythio usa la cámara para que puedas tomar una foto de perfil.",
         "NSPrivacyTracking": false,
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -31,8 +37,28 @@
         "foregroundImage": "./assets/images/icon.png"
       },
       "package": "com.sythio.app",
-      "permissions": ["RECORD_AUDIO", "READ_EXTERNAL_STORAGE"],
-      "edgeToEdgeEnabled": true
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "edgeToEdgeEnabled": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "sythio.app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "output": "static",
@@ -40,6 +66,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       [
         "expo-av",
         {
@@ -71,6 +98,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a7176742-154f-4c45-8200-8c2f6bb2dccc"
+      }
+    },
+    "owner": "carlosanaya"
   }
 }

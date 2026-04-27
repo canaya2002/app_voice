@@ -131,13 +131,13 @@ function rateLimitResponse(
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   const ok = !origin
-    || origin === "https://sythio.com"
-    || origin === "https://www.sythio.com"
+    || origin === "https://sythio.app"
+    || origin === "https://www.sythio.app"
     || origin.endsWith(".sythio.vercel.app")
     || origin.startsWith("http://localhost")
     || origin.startsWith("exp://");
   return {
-    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.com",
+    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.app",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
 }

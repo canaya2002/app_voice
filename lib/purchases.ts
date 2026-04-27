@@ -50,18 +50,26 @@ type CustomerInfo = {
 };
 
 // ---------------------------------------------------------------------------
-// Config — Replace with real key from RevenueCat dashboard
+// Config — Public API keys are read from EXPO_PUBLIC_* env vars at build time.
+// Safe to embed in the client bundle (RevenueCat public keys are not secrets).
 // ---------------------------------------------------------------------------
 
-const REVENUECAT_IOS_KEY = 'appl_REPLACE_WITH_YOUR_REVENUECAT_API_KEY';
+const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS ?? '';
+const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID ?? '';
 const ENTITLEMENT_ID = 'premium';
+
+function getApiKey(): string {
+  if (Platform.OS === 'ios') return REVENUECAT_IOS_KEY;
+  if (Platform.OS === 'android') return REVENUECAT_ANDROID_KEY;
+  return '';
+}
 
 // ---------------------------------------------------------------------------
 // Expo Go guard — react-native-purchases requires a native dev build
 // ---------------------------------------------------------------------------
 
 const isExpoGo = Constants.appOwnership === 'expo';
-const canUsePurchases = Platform.OS === 'ios' && !isExpoGo;
+const canUsePurchases = (Platform.OS === 'ios' || Platform.OS === 'android') && !isExpoGo;
 
 /**
  * Lazy-load the Purchases SDK to avoid crash in Expo Go.
@@ -95,7 +103,8 @@ let configured = false;
 export async function configurePurchases(userId?: string): Promise<void> {
   if (configured || !canUsePurchases) return;
 
-  if (REVENUECAT_IOS_KEY.includes('REPLACE')) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     if (__DEV__) console.warn('[purchases] RevenueCat API key not configured — skipping init');
     return;
   }
@@ -110,7 +119,7 @@ export async function configurePurchases(userId?: string): Promise<void> {
   }
 
   Purchases.configure({
-    apiKey: REVENUECAT_IOS_KEY,
+    apiKey,
     ...(userId ? { appUserID: userId } : {}),
   });
 
