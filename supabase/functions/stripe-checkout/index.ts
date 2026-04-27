@@ -104,9 +104,10 @@ serve(async (req: Request) => {
     params.append("allow_promotion_codes", "true");
     if (existingCustomerId) {
       params.append("customer", existingCustomerId);
-    } else {
-      params.append("customer_email", user.email ?? "");
-      params.append("customer_creation", "always");
+    } else if (user.email) {
+      // In subscription mode Stripe creates the customer automatically — no
+      // `customer_creation` flag (that's payment-mode only). Just pre-fill email.
+      params.append("customer_email", user.email);
     }
 
     const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
