@@ -29,3 +29,21 @@ verify_jwt = false
 # Callers are external services, not authenticated Supabase users.
 [functions.public-api]
 verify_jwt = false
+
+# Enterprise B2B contact form — public, accepts unauthenticated submissions.
+# Hardened internally with IP rate limit + honeypot + input validation.
+[functions.enterprise-inquiry]
+verify_jwt = false
+
+# Captcha verification — public, called from signup form before auth.signUp().
+# Validates Cloudflare Turnstile tokens. Falls open if TURNSTILE_SECRET_KEY unset.
+[functions.verify-captcha]
+verify_jwt = false
+
+# Storage cleanup — invoked by pg_cron daily. Auths via STORAGE_CLEANUP_SECRET.
+[functions.storage-cleanup]
+verify_jwt = false
+
+# Admin endpoints — require profiles.is_admin = true (verified inside the function).
+# verify_jwt is enabled by default — only authenticated users hit them.
+# (No need to add config entries; default behavior is what we want.)

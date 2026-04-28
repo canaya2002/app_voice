@@ -5,9 +5,15 @@
   "outputDirectory": "dist",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "cleanUrls": true,
   "rewrites": [
-    { "source": "/((?!\\.well-known/|privacy-policy|terms).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/|assets/|images/|\\.well-known/|privacy-policy\\.html|terms\\.html|favicon\\.ico|robots\\.txt|sitemap\\.xml).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    { "source": "/privacy-policy", "destination": "/privacy-policy.html", "permanent": false },
+    { "source": "/terms", "destination": "/terms.html", "permanent": false }
   ],
   "headers": [
     {

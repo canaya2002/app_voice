@@ -15,7 +15,7 @@ import {
 
 // Stripe Checkout — invokes the stripe-checkout edge function and redirects.
 async function handleStripeCheckout(
-  tier: 'premium' | 'enterprise',
+  tier: 'premium' | 'pro_plus',
   interval: 'month' | 'year',
   toast: (msg: string, type?: 'success' | 'error' | 'info') => void,
 ) {
@@ -256,19 +256,25 @@ export default function SettingsPage() {
           {subscription.plan === 'free' && (
             <div className="note-section" style={{ marginTop: 24 }}>
               <h2>{t('settings.upgrade')}</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
                 <UpgradeCard
                   name="Premium"
                   price="$14.99/mo"
-                  features={['Unlimited notes', 'Audio up to 30 min', 'All 9 AI modes', 'AI Chat', 'Export all formats', 'Personal API']}
+                  features={['Hasta 50 notas/día', 'Audio hasta 30 min', 'Los 9 modos IA', 'Chat con IA (100/día)', 'Export PDF + Excel', 'API personal']}
                   featured
                   onSelect={() => handleStripeCheckout('premium', 'month', toast)}
                 />
                 <UpgradeCard
-                  name="Enterprise"
+                  name="Pro+"
                   price="$29.99/mo"
-                  features={['Everything in Premium', 'Workspaces & teams', 'API access (unlimited)', 'MCP for Claude/Cursor', 'Audio up to 60 min', 'Priority support']}
-                  onSelect={() => handleStripeCheckout('enterprise', 'month', toast)}
+                  features={['Hasta 200 notas/día', 'Audio hasta 60 min', '8 horas audio/día', 'Chat con IA (500/día)', 'Soporte prioritario', 'Todo lo de Premium']}
+                  onSelect={() => handleStripeCheckout('pro_plus', 'month', toast)}
+                />
+                <UpgradeCard
+                  name="Enterprise"
+                  price="Personalizado"
+                  features={['Para equipos de 5+', 'Workspaces compartidos', 'MCP integrations', 'API ilimitada', 'SSO opcional', 'Soporte dedicado']}
+                  onSelect={() => { window.location.href = '/enterprise'; }}
                 />
               </div>
             </div>

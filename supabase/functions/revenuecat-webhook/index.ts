@@ -27,16 +27,21 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("REVENUECAT_WEBHOOK_SECRET") ?? "";
 
 // Product ID convention: sythio_<tier>_<interval>
-// e.g. sythio_premium_monthly, sythio_enterprise_yearly
-function tierFromProductId(productId: string | null): "premium" | "enterprise" {
-  if (productId && productId.includes("enterprise")) return "enterprise";
+// e.g. sythio_premium_monthly, sythio_pro_plus_yearly
+// 'enterprise' tier is custom B2B and NOT sold via RevenueCat — only premium + pro_plus.
+function tierFromProductId(productId: string | null): "premium" | "pro_plus" {
+  if (productId && (productId.includes("pro_plus") || productId.includes("proplus") || productId.includes("enterprise"))) {
+    return "pro_plus";   // legacy "enterprise" mobile products map to pro_plus
+  }
   return "premium";
 }
 
 function priceCentsFromProductId(productId: string | null): number {
   if (!productId) return 1499;
   const yearly = productId.includes("yearly");
-  if (productId.includes("enterprise")) return yearly ? 29999 : 2999;
+  if (productId.includes("pro_plus") || productId.includes("proplus") || productId.includes("enterprise")) {
+    return yearly ? 29999 : 2999;
+  }
   return yearly ? 14999 : 1499;
 }
 
@@ -67,6 +72,20 @@ serve(async (req: Request) => {
     const userId = event.app_user_id;
     const eventType: string = event.type;
 
+    // ── Idempotency check (event.id is RC's unique event UUID) ──
+    // Insert the event_id; if conflict, we already processed it — ack with 200.
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    if (event.id) {
+      const { error: dupErr } = await admin
+        .from("webhook_events")
+        .insert({ provider: "revenuecat", event_id: event.id, event_type: eventType });
+      if (dupErr && dupErr.code === "23505") {
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Determine platform from store
     const store: string = event.store ?? "";
     const platform =
@@ -85,8 +104,6 @@ serve(async (req: Request) => {
       : null;
 
     const productId = event.product_id ?? null;
-
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // ── Map RevenueCat event to subscription state ───────────────────
     let status: string;

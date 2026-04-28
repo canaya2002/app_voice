@@ -15,9 +15,27 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 // ── Free-tier mode allowlist (must match client lib/constants.ts FREE_MODES) ──
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
-// ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_LIMITS = { free: 2, premium: 50 };
-const PREMIUM_MAX_DAILY_AUDIO_MINUTES = 120;
+// ── Rate limit config (must match _shared/pricing.ts TIER_LIMITS) ──────────
+// CRITICAL: every tier the DB constraint allows must be present here, otherwise
+// the fallback to free creates a silent wrong-cap bug.
+const DAILY_NOTE_LIMITS: Record<string, number> = {
+  free: 2,
+  premium: 50,
+  pro_plus: 200,
+  enterprise: Number.POSITIVE_INFINITY,
+};
+const DAILY_AUDIO_MIN_LIMITS: Record<string, number> = {
+  free: 20,
+  premium: 120,
+  pro_plus: 480,
+  enterprise: Number.POSITIVE_INFINITY,
+};
+const MAX_DURATION_SEC: Record<string, number> = {
+  free: 600,
+  premium: 1800,
+  pro_plus: 3600,
+  enterprise: 7200,
+};
 const IP_RATE_LIMIT = 20;
 const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
@@ -205,15 +223,23 @@ serve(async (req: Request) => {
   let dailyCount = profile.daily_count ?? 0;
   let dailyAudioMinutes = profile.daily_audio_minutes ?? 0;
 
-  // Auto-reset if new day
+  // Auto-reset if new day (resets ALL daily counters atomically)
   if (profile.last_reset_date < today) {
-    await admin.from("profiles").update({ daily_count: 0, daily_audio_minutes: 0, last_reset_date: today }).eq("id", user.id);
+    await admin.from("profiles").update({
+      daily_count: 0,
+      daily_audio_minutes: 0,
+      daily_chat_count: 0,
+      daily_convert_count: 0,
+      last_reset_date: today,
+    }).eq("id", user.id);
     dailyCount = 0;
     dailyAudioMinutes = 0;
   }
 
   const plan = profile.plan || "free";
-  const dailyMax = DAILY_LIMITS[plan as keyof typeof DAILY_LIMITS] ?? DAILY_LIMITS.free;
+  const dailyMax = DAILY_NOTE_LIMITS[plan] ?? DAILY_NOTE_LIMITS.free;
+  const dailyAudioMinMax = DAILY_AUDIO_MIN_LIMITS[plan] ?? DAILY_AUDIO_MIN_LIMITS.free;
+  const durationMaxSec = MAX_DURATION_SEC[plan] ?? MAX_DURATION_SEC.free;
 
   // ── Ownership check ──
   const { data: noteCheck } = await admin.from("notes").select("user_id, retry_count, audio_duration").eq("id", note_id).single();
@@ -221,15 +247,37 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── Premium: daily audio minutes limit ──
-  if (plan === "premium") {
-    const audioDurationMin = ((noteCheck as Record<string, unknown>).audio_duration as number || 0) / 60;
-    if ((dailyAudioMinutes + audioDurationMin) > PREMIUM_MAX_DAILY_AUDIO_MINUTES) {
-      return new Response(
-        JSON.stringify({ error: "daily_minutes_exceeded", message: "Has alcanzado el límite de 120 minutos diarios de audio." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+  const audioDurationSec = (noteCheck as Record<string, unknown>).audio_duration as number || 0;
+  const audioDurationMin = audioDurationSec / 60;
+
+  // ── Require valid audio_duration (1s-7200s); prevents 0-duration spoofing ──
+  if (audioDurationSec < 1 || audioDurationSec > 7200) {
+    return new Response(
+      JSON.stringify({ error: "invalid_duration", message: "Duración de audio inválida." }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // ── Per-note duration limit (enforced server-side, can't be bypassed by client) ──
+  if (audioDurationSec > durationMaxSec) {
+    return new Response(
+      JSON.stringify({
+        error: "duration_exceeded",
+        message: `Esta nota excede el límite de ${Math.floor(durationMaxSec / 60)} minutos para tu plan.`,
+      }),
+      { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // ── Daily audio minutes limit (all tiers) ──
+  if (Number.isFinite(dailyAudioMinMax) && (dailyAudioMinutes + audioDurationMin) > dailyAudioMinMax) {
+    return new Response(
+      JSON.stringify({
+        error: "daily_minutes_exceeded",
+        message: `Has alcanzado el límite de ${Math.floor(dailyAudioMinMax)} minutos diarios de audio.`,
+      }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 
   // ── Mode gate ──
@@ -269,6 +317,24 @@ serve(async (req: Request) => {
     // ── 2. Download audio ──
     const { data: audioData, error: dlError } = await admin.storage.from("audio-files").download(audio_path);
     if (dlError) throw new Error(`download_failed: ${dlError.message}`);
+
+    // ── 2b. Anti-spoof: validate file size against declared duration ──
+    // m4a/opus is ~1.0-1.5 MB/min. If actual file is > 2 MB/min of declared duration,
+    // user is lying about audio_duration to bypass tier caps. Reject.
+    // This also catches uploads that exceed the per-tier duration cap (since file size
+    // grows with real duration, a 60-min file on free tier would fail this check).
+    const fileSizeBytes = audioData.size;
+    const maxBytesForDuration = Math.max(2_000_000, audioDurationSec * 2_000_000 / 60); // 2MB/min ceiling
+    if (fileSizeBytes > maxBytesForDuration) {
+      // Rollback the daily count we just incremented
+      await admin.from("profiles").update({ daily_count: dailyCount }).eq("id", user.id).then(() => {});
+      throw new Error(`duration_mismatch: declared ${Math.round(audioDurationSec)}s but file is ${Math.round(fileSizeBytes/1024)}KB`);
+    }
+    // Hard cap on file size as defense-in-depth (also enforced by Groq at 25MB)
+    if (fileSizeBytes > 25 * 1024 * 1024) {
+      await admin.from("profiles").update({ daily_count: dailyCount }).eq("id", user.id).then(() => {});
+      throw new Error("transcription_failed: El archivo de audio supera el límite de 25MB");
+    }
 
     // ── 3. Groq Whisper transcription ──
     const whisperCtrl = new AbortController();
@@ -482,10 +548,10 @@ ${JSON.stringify(whisperSegments.map((s, i) => ({ i, t: s.text })))}`;
       admin.from("action_items").insert(taskInserts).then(() => {});
     }
 
-    // ── 9. Update daily audio minutes for premium users ──
-    if (plan === "premium") {
-      const audioDurationMin = Math.ceil(((noteCheck as Record<string, unknown>).audio_duration as number || 0) / 60);
-      await admin.from("profiles").update({ daily_audio_minutes: dailyAudioMinutes + audioDurationMin }).eq("id", user.id);
+    // ── 9. Update daily audio minutes (all tiers — needed for cap enforcement) ──
+    {
+      const usedMin = Math.ceil(audioDurationMin);
+      await admin.from("profiles").update({ daily_audio_minutes: dailyAudioMinutes + usedMin }).eq("id", user.id);
     }
 
     // ── 10. Slack notification (fire-and-forget) ──

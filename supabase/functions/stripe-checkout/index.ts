@@ -25,11 +25,12 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUCCESS_URL = Deno.env.get("STRIPE_SUCCESS_URL") ?? "https://sythio.app/settings?stripe=success";
 const CANCEL_URL = Deno.env.get("STRIPE_CANCEL_URL") ?? "https://sythio.app/settings?stripe=cancel";
 
+// Self-service tiers only. Enterprise is custom-priced via /enterprise-inquiry — not Stripe.
 const PRICE_IDS: Record<string, string> = {
   "premium:month": Deno.env.get("STRIPE_PRICE_PREMIUM_MONTHLY") ?? "",
   "premium:year": Deno.env.get("STRIPE_PRICE_PREMIUM_YEARLY") ?? "",
-  "enterprise:month": Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY") ?? "",
-  "enterprise:year": Deno.env.get("STRIPE_PRICE_ENTERPRISE_YEARLY") ?? "",
+  "pro_plus:month": Deno.env.get("STRIPE_PRICE_PRO_PLUS_MONTHLY") ?? "",
+  "pro_plus:year": Deno.env.get("STRIPE_PRICE_PRO_PLUS_YEARLY") ?? "",
 };
 
 function corsHeaders(req: Request): Record<string, string> {
@@ -73,8 +74,11 @@ serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const tier = body.tier as string;
     const interval = (body.interval as string) ?? "month";
-    if (!["premium", "enterprise"].includes(tier) || !["month", "year"].includes(interval)) {
-      return new Response(JSON.stringify({ error: "Invalid tier or interval" }), { status: 400, headers });
+    if (!["premium", "pro_plus"].includes(tier) || !["month", "year"].includes(interval)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid tier or interval", detail: "Self-service tiers: premium, pro_plus. For enterprise, use /enterprise-inquiry." }),
+        { status: 400, headers },
+      );
     }
 
     const priceId = PRICE_IDS[`${tier}:${interval}`];

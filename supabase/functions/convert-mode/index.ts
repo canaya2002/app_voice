@@ -14,8 +14,14 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 // ── Free-tier mode allowlist ──────────────────────────────────────────────
 const FREE_MODES = ["summary", "tasks", "clean_text", "ideas", "outline"];
 
-// ── Rate limit config ──────────────────────────────────────────────────────
-const DAILY_CONVERT_LIMITS = { free: 10, premium: 50 };
+// ── Rate limit config (must match _shared/pricing.ts TIER_LIMITS.dailyConvertLimit) ──
+// Lowered free from 10 → 3 (was abuse vector: 10 reconv/day × $0.01 = $3/mo loss per free user).
+const DAILY_CONVERT_LIMITS: Record<string, number> = {
+  free: 3,
+  premium: 50,
+  pro_plus: 200,
+  enterprise: Number.POSITIVE_INFINITY,
+};
 const IP_RATE_LIMIT = 20;
 const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
@@ -145,8 +151,8 @@ serve(async (req: Request) => {
   if (existing) return new Response(JSON.stringify({ success: true, result: existing }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   // ── Daily convert rate limit ──
-  const dailyMax = DAILY_CONVERT_LIMITS[plan as keyof typeof DAILY_CONVERT_LIMITS] ?? DAILY_CONVERT_LIMITS.free;
-  if (dailyMax !== Infinity) {
+  const dailyMax = DAILY_CONVERT_LIMITS[plan] ?? DAILY_CONVERT_LIMITS.free;
+  if (Number.isFinite(dailyMax)) {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const { data: userNotes } = await admin.from("notes").select("id").eq("user_id", user.id);
     const noteIds = (userNotes || []).map((n: { id: string }) => n.id);

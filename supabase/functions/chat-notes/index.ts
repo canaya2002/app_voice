@@ -11,6 +11,40 @@ const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const MAX_CONTEXT_CHARS = 12000;
 const MAX_NOTES_CONTEXT = 5;
 
+// ── Rate limits (must match _shared/pricing.ts dailyChatLimit) ────────────
+const DAILY_CHAT_LIMITS: Record<string, number> = {
+  free: 0,                              // free users gated entirely
+  premium: 100,
+  pro_plus: 500,
+  enterprise: Number.POSITIVE_INFINITY,
+};
+const IP_RATE_LIMIT = 30;               // questions per hour per IP
+const IP_RATE_WINDOW_MS = 3_600_000;
+
+// In-memory IP rate limiter (resets on cold start — acceptable for chat).
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+
+function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+    return { allowed: true, retryAfter: 0 };
+  }
+  entry.count++;
+  if (entry.count > IP_RATE_LIMIT) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  return { allowed: true, retryAfter: 0 };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of ipHits) {
+    if (now >= entry.resetAt) ipHits.delete(ip);
+  }
+}, 5 * 60_000);
+
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   const ok = !origin
@@ -30,6 +64,18 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // ── IP rate limit (layer 1) ──
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || req.headers.get("cf-connecting-ip")
+    || "unknown";
+  const ipCheck = checkIpRateLimit(clientIp);
+  if (!ipCheck.allowed) {
+    return new Response(
+      JSON.stringify({ error: "rate_limit_exceeded", message: "Demasiadas preguntas. Espera un momento.", retry_after: ipCheck.retryAfter }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(ipCheck.retryAfter) } },
+    );
   }
 
   // ── Auth ──
@@ -63,6 +109,42 @@ serve(async (req: Request) => {
   const channelIds = Array.isArray(body.channel_ids) ? body.channel_ids as string[] : [];
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  // ── Plan gate + daily chat limit (atomic increment via RPC — race-safe) ──
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
+  const plan = (profile?.plan as string) || "free";
+  const dailyChatMax = DAILY_CHAT_LIMITS[plan] ?? DAILY_CHAT_LIMITS.free;
+
+  if (dailyChatMax === 0) {
+    return new Response(
+      JSON.stringify({ error: "gate_exceeded", gate: "requires_premium", message: "El chat con IA requiere Premium o superior." }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // For finite caps, attempt atomic increment. RPC returns true if under limit (and increments),
+  // false if at/over limit. Enterprise (Infinity) skips the check entirely.
+  if (Number.isFinite(dailyChatMax)) {
+    // Pass a sentinel max_count high enough that JSON-safe (32-bit int).
+    const { data: incremented } = await admin.rpc("increment_chat_count", {
+      user_id_input: user.id,
+      max_count: dailyChatMax,
+    });
+    if (!incremented) {
+      return new Response(
+        JSON.stringify({
+          error: "rate_limit_exceeded",
+          limit_type: "daily",
+          message: `Has alcanzado el límite de ${dailyChatMax} preguntas diarias.`,
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+  }
 
   // ── Fetch notes based on context type ──
   let notes: Record<string, unknown>[] = [];
@@ -218,6 +300,10 @@ Be concise and direct. Reference specific notes when possible.`;
     if (!res.ok) throw new Error("LLM error");
     const data = await res.json();
     const answer = data.content[0].text;
+
+    // Note: daily_chat_count was already incremented atomically via increment_chat_count RPC above.
+    // We optimistically increment BEFORE the LLM call so concurrent requests can't bypass the cap;
+    // the trade-off is that a failed LLM call still consumes one of the user's daily quota.
 
     return new Response(
       JSON.stringify({ answer, sources: sourceIds }),

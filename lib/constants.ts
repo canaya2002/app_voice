@@ -100,11 +100,14 @@ export function useIsDark(): boolean {
 export const LIMITS = {
   FREE_DAILY_NOTES: PRICING.free.notesPerDay,
   PREMIUM_DAILY_NOTES: PRICING.premium.notesPerDay,
+  PRO_PLUS_DAILY_NOTES: PRICING.pro_plus.notesPerDay,
   ENTERPRISE_DAILY_NOTES: PRICING.enterprise.notesPerDay,
-  FREE_MAX_AUDIO_DURATION: PRICING.free.maxDurationSec,           // 10 min
-  PREMIUM_MAX_AUDIO_DURATION: PRICING.premium.maxDurationSec,     // 30 min
-  ENTERPRISE_MAX_AUDIO_DURATION: PRICING.enterprise.maxDurationSec, // 60 min
-  PREMIUM_MAX_DAILY_AUDIO_MINUTES: 120,
+  FREE_MAX_AUDIO_DURATION: PRICING.free.maxDurationSec,             // 10 min
+  PREMIUM_MAX_AUDIO_DURATION: PRICING.premium.maxDurationSec,       // 30 min
+  PRO_PLUS_MAX_AUDIO_DURATION: PRICING.pro_plus.maxDurationSec,     // 60 min
+  ENTERPRISE_MAX_AUDIO_DURATION: PRICING.enterprise.maxDurationSec, // 120 min
+  PREMIUM_MAX_DAILY_AUDIO_MINUTES: PRICING.premium.maxDailyAudioMinutes,
+  PRO_PLUS_MAX_DAILY_AUDIO_MINUTES: PRICING.pro_plus.maxDailyAudioMinutes,
   MAX_AUDIO_DURATION: PRICING.free.maxDurationSec,
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   MAX_TRANSCRIPT_CHARS: 15000,

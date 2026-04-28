@@ -1,10 +1,12 @@
 import { supabase } from '../supabase';
 
 // ── Types ───────────────────────────────────────────────────────────────
+export type Plan = 'free' | 'premium' | 'pro_plus' | 'enterprise';
+
 export interface SubscriptionInfo {
-  plan: 'free' | 'premium' | 'enterprise';
+  plan: Plan;
   platform: 'ios' | 'web' | 'android' | null;
-  status: 'active' | 'trial' | 'cancelled' | 'expired' | null;
+  status: 'active' | 'trial' | 'cancelled' | 'expired' | 'past_due' | null;
   currentPeriodEnd: string | null;
   canManageHere: boolean;
   priceCents: number | null;
@@ -120,6 +122,7 @@ export async function getUserPlatforms(userId: string): Promise<string[]> {
 export function getPlanLabel(plan: string): string {
   switch (plan) {
     case 'enterprise': return 'Enterprise';
+    case 'pro_plus': return 'Pro+';
     case 'premium': return 'Premium';
     default: return 'Free';
   }
@@ -128,6 +131,7 @@ export function getPlanLabel(plan: string): string {
 export function getPlanColor(plan: string): string {
   switch (plan) {
     case 'enterprise': return 'var(--amber)';
+    case 'pro_plus': return 'var(--gold)';
     case 'premium': return 'var(--accent)';
     default: return 'var(--text3)';
   }

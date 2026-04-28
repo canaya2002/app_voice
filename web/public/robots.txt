@@ -1,8 +1,14 @@
 User-agent: *
 Allow: /
+Allow: /enterprise
+Allow: /privacy-policy
+Allow: /terms
 Disallow: /note/
 Disallow: /trash
 Disallow: /settings
+Disallow: /auth/
+Disallow: /workspaces
+Disallow: /integrations
 
 User-agent: GPTBot
 Allow: /

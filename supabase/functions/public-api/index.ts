@@ -67,8 +67,18 @@ serve(async (req: Request) => {
   const userId = keyRecord.user_id as string;
   const permissions = (keyRecord.permissions as string[]) || ["read"];
 
-  // Update last_used
-  await admin.from("api_keys").update({ last_used: new Date().toISOString() }).eq("id", keyRecord.id);
+  // ── Rate limit per API key (10K requests/day default) ──
+  // Atomic via api_usage_increment RPC.
+  const { data: underQuota } = await admin.rpc("api_usage_increment", {
+    p_api_key_id: keyRecord.id,
+    p_max_per_day: 10000,
+  });
+  if (underQuota === false) {
+    return jsonResponse({ error: "Daily API quota exceeded (10,000 req/day)" }, 429);
+  }
+
+  // Update last_used (fire-and-forget)
+  admin.from("api_keys").update({ last_used: new Date().toISOString() }).eq("id", keyRecord.id).then(() => {});
 
   // ── Route ──
   const url = new URL(req.url);

@@ -200,7 +200,20 @@ export default function LoginScreen() {
             </AnimatedPressable>
           )}
 
-          {/* Forgot password */}
+          {/*
+            Forgot password — DESIGN CHOICE (2026-04-28):
+            Reset link redirects to https://sythio.app/auth/reset (web) instead of
+            a deep-link back into the mobile app. Reasons:
+              1. Web has a dedicated /auth/reset page that handles PASSWORD_RECOVERY events
+                 and shows a "set new password" form.
+              2. Mobile listener in app/_layout.tsx sets the recovery session via deep-link
+                 but has no UI to actually CHANGE the password — user would land authenticated
+                 with the old password.
+              3. Web flow is simpler to maintain (one path) and the user can come back to the
+                 mobile app and login with the new password.
+            Don't change this to a deep-link without also adding a "set new password" screen
+            on mobile that listens for `PASSWORD_RECOVERY` events.
+          */}
           <TouchableOpacity
             style={styles.forgotButton}
             onPress={async () => {
@@ -208,12 +221,17 @@ export default function LoginScreen() {
                 Alert.alert('Recuperar contraseña', 'Ingresa tu email arriba primero.');
                 return;
               }
-              const redirectUrl = Linking.createURL('auth-callback');
-              const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: redirectUrl });
+              // Redirect reset link to web — user creates new password there, then logs back in here.
+              const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                redirectTo: 'https://sythio.app/auth/reset',
+              });
               if (resetError) {
                 showToast('No se pudo enviar el enlace', 'error');
               } else {
-                showToast('Enlace de recuperación enviado a tu email', 'success');
+                Alert.alert(
+                  'Enlace enviado',
+                  'Si tu email está registrado, recibirás un enlace para crear una nueva contraseña. Abre el enlace en cualquier navegador.',
+                );
               }
             }}
             activeOpacity={0.7}

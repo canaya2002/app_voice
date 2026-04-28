@@ -4,7 +4,7 @@
   <!-- Homepage / Login -->
   <url>
     <loc>https://sythio.app/</loc>
-    <lastmod>2026-04-08</lastmod>
+    <lastmod>2026-04-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://sythio.app/"/>
@@ -14,10 +14,35 @@
     <xhtml:link rel="alternate" hreflang="pt" href="https://sythio.app/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://sythio.app/"/>
   </url>
-  <!-- Shared notes (public, crawlable) -->
+
+  <!-- Enterprise B2B contact form -->
+  <url>
+    <loc>https://sythio.app/enterprise</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Privacy Policy -->
+  <url>
+    <loc>https://sythio.app/privacy-policy</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Terms of Service -->
+  <url>
+    <loc>https://sythio.app/terms</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Shared notes (public, crawlable parent index) -->
   <url>
     <loc>https://sythio.app/shared/</loc>
-    <lastmod>2026-04-08</lastmod>
+    <lastmod>2026-04-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
   </url>

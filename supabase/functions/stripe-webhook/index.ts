@@ -21,11 +21,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Map Stripe price IDs back to tiers — keep in sync with stripe-checkout.
-const TIER_BY_PRICE: Record<string, "premium" | "enterprise"> = {
+// Note: 'enterprise' tier is custom B2B (no Stripe product). Only premium + pro_plus are self-service via Stripe.
+type SelfServiceTier = "premium" | "pro_plus";
+const TIER_BY_PRICE: Record<string, SelfServiceTier> = {
   [Deno.env.get("STRIPE_PRICE_PREMIUM_MONTHLY") ?? "_"]: "premium",
   [Deno.env.get("STRIPE_PRICE_PREMIUM_YEARLY") ?? "_"]: "premium",
-  [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY") ?? "_"]: "enterprise",
-  [Deno.env.get("STRIPE_PRICE_ENTERPRISE_YEARLY") ?? "_"]: "enterprise",
+  [Deno.env.get("STRIPE_PRICE_PRO_PLUS_MONTHLY") ?? "_"]: "pro_plus",
+  [Deno.env.get("STRIPE_PRICE_PRO_PLUS_YEARLY") ?? "_"]: "pro_plus",
 };
 
 // Verify Stripe signature. Adapted from Stripe's recommended verification.
@@ -82,6 +84,22 @@ serve(async (req: Request) => {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  // ── Idempotency: insert event_id with ON CONFLICT DO NOTHING. If conflict,
+  //    we've already processed this event — return 200 to ack but skip processing.
+  //    Stripe retries on non-2xx, so we MUST 200 even on duplicates. ──
+  if (event.id) {
+    const { error: dupErr } = await supabase
+      .from("webhook_events")
+      .insert({ provider: "stripe", event_id: event.id, event_type: event.type });
+    if (dupErr && dupErr.code === "23505") {
+      // Unique violation — already processed
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    // Any other error from the insert is non-fatal (e.g. RLS) — proceed to process.
+  }
 
   try {
     switch (event.type) {
@@ -174,7 +192,7 @@ async function upsertSubscription(
   supabase: ReturnType<typeof createClient>,
   args: {
     userId: string;
-    tier: "premium" | "enterprise";
+    tier: SelfServiceTier;
     customerId: string;
     subscriptionId: string;
     status: string;

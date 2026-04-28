@@ -5,6 +5,30 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// IP rate limit — prevents brute-forcing share tokens
+const IP_RATE_LIMIT = 30;          // requests per hour per IP
+const IP_RATE_WINDOW_MS = 3_600_000;
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+
+function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+    return { allowed: true, retryAfter: 0 };
+  }
+  entry.count++;
+  if (entry.count > IP_RATE_LIMIT) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  return { allowed: true, retryAfter: 0 };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of ipHits) if (now >= entry.resetAt) ipHits.delete(ip);
+}, 5 * 60_000);
+
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   const ok = !origin
@@ -26,6 +50,17 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // IP rate limit (anti brute-force on share tokens)
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || req.headers.get("cf-connecting-ip") || "unknown";
+  const ipCheck = checkIpRateLimit(clientIp);
+  if (!ipCheck.allowed) {
+    return new Response(
+      JSON.stringify({ error: "rate_limit_exceeded", retry_after: ipCheck.retryAfter }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(ipCheck.retryAfter) } },
+    );
   }
 
   let body: Record<string, unknown>;

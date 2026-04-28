@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, createContext, useContext, useRef } f
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { EnterpriseContactPage } from './components/EnterpriseContactPage';
+import { AdminPage } from './components/AdminPage';
 import SettingsPage from './components/SettingsPage';
 import { logPlatformSession, getSubscriptionDetails } from './lib/subscription';
 import { I18nProvider, useI18n, LANG_LABELS, type Lang } from './i18n';
@@ -442,13 +445,66 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
     if (e) setError(e.message);
   };
 
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+
+  const handleForgot = async () => {
+    setError('');
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Ingresa un email válido');
+      return;
+    }
+    setLoading(true);
+    const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth/reset`,
+    });
+    setLoading(false);
+    if (e) {
+      setError(e.message);
+      return;
+    }
+    setForgotSent(true);
+  };
+
   const formContent = (
     <div className="auth-form-panel">
       <div className="auth-card">
         <img src="/images/icon.png" alt="Sythio" className="auth-logo" />
-        <h1 className="auth-title">{isRegister ? t('auth.createAccount') : t('auth.welcome')}</h1>
-        <p className="auth-subtitle">{isRegister ? t('auth.freeNoCc') : t('auth.accessNotes')}</p>
+        <h1 className="auth-title">
+          {forgotMode ? 'Recuperar contraseña' : (isRegister ? t('auth.createAccount') : t('auth.welcome'))}
+        </h1>
+        <p className="auth-subtitle">
+          {forgotMode
+            ? (forgotSent
+                ? 'Si tu email está registrado, recibirás un enlace en unos minutos. Revisa también tu carpeta de spam.'
+                : 'Te enviaremos un enlace para crear una nueva contraseña.')
+            : (isRegister ? t('auth.freeNoCc') : t('auth.accessNotes'))}
+        </p>
         {error && <div className="auth-error">{error}</div>}
+        {forgotMode ? (
+          forgotSent ? (
+            <button className="auth-btn" type="button" onClick={() => { setForgotMode(false); setForgotSent(false); setError(''); }}>
+              Volver al inicio de sesión
+            </button>
+          ) : (
+            <>
+              <input className="auth-input" type="email" placeholder={t('auth.email')} value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
+              <button className="auth-btn" type="button" onClick={handleForgot} disabled={loading}>
+                {loading ? '...' : 'Enviar enlace'}
+              </button>
+              <p className="auth-link" style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
+                Si te registraste con Google o Apple, este enlace te permitirá agregar una contraseña.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setError(''); }}
+                style={{ marginTop: 8, background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 }}
+              >
+                ← Volver
+              </button>
+            </>
+          )
+        ) : (
         <form onSubmit={handleSubmit}>
           {isRegister && <input className="auth-input" type="text" placeholder={t('auth.yourName')} value={name} onChange={e => setName(e.target.value)} />}
           <input className="auth-input" type="email" placeholder={t('auth.email')} value={email} onChange={e => setEmail(e.target.value)} required />
@@ -456,7 +512,18 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
           <button className="auth-btn" type="submit" disabled={loading}>
             {loading ? '...' : isRegister ? t('auth.createFree') : t('auth.signIn')}
           </button>
+          {!isRegister && (
+            <button
+              type="button"
+              onClick={() => { setForgotMode(true); setError(''); setForgotSent(false); }}
+              style={{ marginTop: 10, background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' }}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          )}
         </form>
+        )}
+        {!forgotMode && (
         <div className="auth-social">
           <div className="auth-divider"><span>{t('auth.orContinue')}</span></div>
           <div className="auth-social-row">
@@ -470,10 +537,13 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
             </button>
           </div>
         </div>
+        )}
+        {!forgotMode && (
         <p className="auth-link">
           {isRegister ? t('auth.hasAccount') : t('auth.noAccount')}
           <a href="#" onClick={e => { e.preventDefault(); handleToggle(); }}>{isRegister ? t('auth.signIn') : t('auth.signUpFree')}</a>
         </p>
+        )}
         <div className="auth-lang-bar">
           {(Object.entries(LANG_LABELS) as [Lang, string][]).map(([code, label]) => (
             <button key={code} className={`auth-lang-btn ${lang === code ? 'active' : ''}`} onClick={() => setLang(code)}>
@@ -1918,6 +1988,15 @@ export default function App() {
       <Routes>
         {/* Public shared note route - no auth required */}
         <Route path="/shared/:token" element={<SharedNotePage />} />
+
+        {/* Password reset (handled outside main app routes — no auth required) */}
+        <Route path="/auth/reset" element={<ResetPasswordPage />} />
+
+        {/* Enterprise contact form (public landing) */}
+        <Route path="/enterprise" element={<EnterpriseContactPage />} />
+
+        {/* Admin dashboard — requires profiles.is_admin = true (checked inside) */}
+        <Route path="/admin" element={<AdminPage />} />
 
         {/* All other routes */}
         <Route path="*" element={

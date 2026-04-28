@@ -44,15 +44,28 @@ serve(async (req: Request) => {
     // Get Slack integration
     const { data: integration } = await admin
       .from("integrations")
-      .select("config, enabled")
+      .select("config, enabled, last_notified_at")
       .eq("user_id", user_id)
       .eq("provider", "slack")
-      .single();
+      .maybeSingle();
 
     if (!integration || !integration.enabled) {
       return new Response(JSON.stringify({ skipped: true, reason: "No Slack integration" }), {
         headers: { ...cors, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Debounce — skip if we already notified this user in the last 60 seconds. ──
+    // Protects against burst-DoS on the user's Slack workspace if process-audio
+    // is retried multiple times for the same note.
+    const DEBOUNCE_MS = 60_000;
+    if (integration.last_notified_at) {
+      const lastMs = new Date(integration.last_notified_at as string).getTime();
+      if (Date.now() - lastMs < DEBOUNCE_MS) {
+        return new Response(JSON.stringify({ skipped: true, reason: "Debounced" }), {
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const config = integration.config as { webhook_url?: string; channel_name?: string; notify_on?: string[] };
@@ -137,7 +150,14 @@ serve(async (req: Request) => {
       });
     }
 
-    // Log event
+    // Update debounce timestamp + log event (fire-and-forget)
+    admin
+      .from("integrations")
+      .update({ last_notified_at: new Date().toISOString() })
+      .eq("user_id", user_id)
+      .eq("provider", "slack")
+      .then(() => {});
+
     await admin.from("analytics_events").insert({
       user_id, event: "slack_notification_sent",
       properties: { note_id, template: note.template },
