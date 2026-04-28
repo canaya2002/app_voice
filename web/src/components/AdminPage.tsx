@@ -29,11 +29,43 @@ interface Inquiry {
   created_at: string;
 }
 
+// ── Design tokens ─────────────────────────────────────────────────────────
+const t = {
+  bg: '#06060B',
+  surface: '#0E0E18',
+  surfaceHi: '#14142B',
+  border: 'rgba(255,255,255,0.06)',
+  borderHi: 'rgba(255,255,255,0.12)',
+  text: '#F2F2F7',
+  textMuted: '#9095A6',
+  textDim: '#5C6178',
+  accent: '#7C5CFF',
+  accentHi: '#9D85FF',
+  accentSoft: 'rgba(124,92,255,0.12)',
+  success: '#34D399',
+  successSoft: 'rgba(52,211,153,0.10)',
+  warn: '#FBBF24',
+  danger: '#F87171',
+  dangerSoft: 'rgba(248,113,113,0.10)',
+  shadow: '0 8px 24px rgba(0,0,0,0.4)',
+};
+
+const fontStack = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif';
+
+const Card: React.CSSProperties = {
+  background: t.surface,
+  border: `1px solid ${t.border}`,
+  borderRadius: 12,
+  padding: 20,
+  transition: 'border-color 0.2s, transform 0.2s',
+};
+
 export function AdminPage() {
   const navigate = useNavigate();
   const [authChecking, setAuthChecking] = useState(true);
   const [authorized, setAuthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState<'onboard' | 'workspaces' | 'inquiries'>('inquiries');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [activeTab, setActiveTab] = useState<'inquiries' | 'onboard' | 'workspaces'>('inquiries');
   const [token, setToken] = useState<string>('');
 
   // Onboard form state
@@ -57,7 +89,7 @@ export function AdminPage() {
   const [wsAddEmails, setWsAddEmails] = useState<Record<string, string>>({});
   const [wsAddRole, setWsAddRole] = useState<Record<string, 'owner' | 'admin' | 'member'>>({});
 
-  // Auth check on mount
+  // Auth check
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -76,6 +108,7 @@ export function AdminPage() {
         return;
       }
       setToken(session.access_token);
+      setAdminEmail(profile.email || session.user.email || '');
       setAuthChecking(false);
       setAuthorized(true);
     })();
@@ -119,12 +152,9 @@ export function AdminPage() {
     e.preventDefault();
     setError('');
     setResult(null);
-    if (!companyName.trim() || companyName.length < 2) { setError('Company name required'); return; }
-
-    // Parse users text — format per line: email[,role]
-    // Default role is member; first line role is owner unless overridden.
+    if (!companyName.trim() || companyName.length < 2) { setError('Nombre de empresa requerido'); return; }
     const lines = usersText.split('\n').map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) { setError('At least one user required'); return; }
+    if (lines.length === 0) { setError('Al menos un usuario requerido'); return; }
 
     let ownerSet = false;
     const users: UserRow[] = lines.map((line, i) => {
@@ -143,17 +173,13 @@ export function AdminPage() {
 
     if (enableBilling) {
       const amt = parseInt(billingAmount, 10);
-      if (!Number.isFinite(amt) || amt < 1) { setError('Billing amount invalid'); return; }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) { setError('Billing email invalid'); return; }
+      if (!Number.isFinite(amt) || amt < 1) { setError('Monto de facturación inválido'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) { setError('Email de facturación inválido'); return; }
     }
 
     setSubmitting(true);
     try {
-      const body: any = {
-        company_name: companyName.trim(),
-        users,
-        inquiry_id: selectedInquiryId,
-      };
+      const body: any = { company_name: companyName.trim(), users, inquiry_id: selectedInquiryId };
       if (enableBilling) {
         body.billing = {
           amount_cents: parseInt(billingAmount, 10) * 100,
@@ -168,21 +194,19 @@ export function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed');
+        setError(data.error || 'Operación fallida');
         setResult(data);
         return;
       }
       setResult(data);
-      // Refresh
       fetchWorkspaces();
       fetchInquiries();
-      // Reset form
       setCompanyName('');
       setUsersText('');
       setBillingEmail('');
       setSelectedInquiryId(null);
     } catch (e: any) {
-      setError(e.message || 'Network error');
+      setError(e.message || 'Error de red');
     } finally {
       setSubmitting(false);
     }
@@ -193,14 +217,13 @@ export function AdminPage() {
     const role = wsAddRole[workspaceId] || 'member';
     const emails = emailsRaw.split(/[\s,;\n]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
     if (emails.length === 0) return;
-
     const res = await fetch(`${FN_URL}/admin-list-workspaces?action=add_users`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspace_id: workspaceId, emails, role }),
     });
     const data = await res.json();
-    alert(JSON.stringify(data, null, 2));
+    alert(data.ok ? `✓ Agregados ${data.result?.added ?? emails.length} usuarios` : `Error: ${data.error}`);
     setWsAddEmails((prev) => ({ ...prev, [workspaceId]: '' }));
     fetchMembers(workspaceId);
   };
@@ -218,14 +241,14 @@ export function AdminPage() {
   };
 
   const handleCancelStripe = async (workspaceId: string) => {
-    if (!confirm('Cancelar la subscription Stripe? Los users quedarán en enterprise hasta que tú los bajes manualmente.')) return;
+    if (!confirm('Cancelar la subscription de Stripe? Los usuarios mantendrán acceso enterprise hasta que los bajes manualmente.')) return;
     const res = await fetch(`${FN_URL}/admin-list-workspaces?action=cancel_subscription`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspace_id: workspaceId }),
     });
     const data = await res.json();
-    alert(res.ok ? 'Subscription cancelada' : `Error: ${data.error}`);
+    alert(res.ok ? '✓ Subscription cancelada' : `Error: ${data.error}`);
   };
 
   const useInquiryAsTemplate = (inq: Inquiry) => {
@@ -240,41 +263,130 @@ export function AdminPage() {
     }
   };
 
+  const formatRelative = (iso: string) => {
+    const ms = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return 'ahora';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `${days}d`;
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────
   if (authChecking) {
-    return <div style={{ padding: 40, textAlign: 'center', color: '#fff' }}>Verificando acceso…</div>;
+    return (
+      <div style={{ background: t.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fontStack }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: t.textMuted }}>
+          <div style={{ width: 18, height: 18, border: `2px solid ${t.border}`, borderTopColor: t.accent, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <span>Verificando acceso…</span>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
+
   if (!authorized) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#fff', background: '#0B0B0B', minHeight: '100vh' }}>
-        <h1>Acceso denegado</h1>
-        <p>Esta página solo es para administradores.</p>
-        <button onClick={() => navigate('/', { replace: true })} style={{ marginTop: 16, padding: '8px 16px', cursor: 'pointer' }}>
-          Volver
-        </button>
+      <div style={{ background: t.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fontStack, padding: 24 }}>
+        <div style={{ ...Card, maxWidth: 420, width: '100%', padding: 36, textAlign: 'center' }}>
+          <div style={{ width: 56, height: 56, margin: '0 auto 20px', borderRadius: 14, background: t.dangerSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🔒</div>
+          <h1 style={{ color: t.text, fontSize: 22, margin: '0 0 8px', fontWeight: 600 }}>Acceso restringido</h1>
+          <p style={{ color: t.textMuted, fontSize: 14, lineHeight: 1.5, margin: '0 0 24px' }}>
+            Esta página es solo para administradores de Sythio.
+          </p>
+          <button
+            onClick={() => navigate('/', { replace: true })}
+            style={{ background: t.accent, color: '#fff', border: 'none', padding: '10px 24px', borderRadius: 8, cursor: 'pointer', fontWeight: 500, fontSize: 14, transition: 'background 0.2s' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = t.accentHi}
+            onMouseLeave={(e) => e.currentTarget.style.background = t.accent}
+          >
+            Volver al inicio
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ background: '#0B0B0B', minHeight: '100vh', color: '#fff', padding: 24 }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <h1 style={{ marginBottom: 20 }}>🛠 Sythio Admin</h1>
+    <div style={{ background: t.bg, minHeight: '100vh', color: t.text, fontFamily: fontStack, paddingBottom: 60 }}>
+      {/* Top bar */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(6,6,11,0.85)', backdropFilter: 'blur(12px)',
+        borderBottom: `1px solid ${t.border}`,
+        padding: '14px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${t.accent}, ${t.accentHi})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>S</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: -0.2 }}>Sythio Admin</div>
+            <div style={{ fontSize: 11, color: t.textDim }}>Internal operations</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ fontSize: 12, color: t.textMuted }}>{adminEmail}</span>
+          <button
+            onClick={() => navigate('/', { replace: true })}
+            style={{ background: 'transparent', color: t.textMuted, border: `1px solid ${t.border}`, padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}
+          >
+            Volver al app ↗
+          </button>
+        </div>
+      </header>
+
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 32px 0' }}>
+        {/* Stat cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
+          <StatCard
+            label="Solicitudes nuevas"
+            value={inquiries.filter((i) => i.status === 'new').length}
+            hint="Click 'Solicitudes' abajo"
+            color={t.accent}
+            t={t}
+          />
+          <StatCard
+            label="Workspaces activos"
+            value={workspaces.length}
+            hint="Empresas onboardeadas"
+            color={t.success}
+            t={t}
+          />
+          <StatCard
+            label="Total miembros"
+            value={workspaces.reduce((sum, w) => sum + w.member_count, 0)}
+            hint="Across all workspaces"
+            color={t.warn}
+            t={t}
+          />
+        </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid #333', paddingBottom: 8 }}>
-          {(['inquiries', 'onboard', 'workspaces'] as const).map((tab) => (
+        <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
+          {([
+            ['inquiries', '📬 Solicitudes', inquiries.length],
+            ['onboard', '✨ Crear Enterprise', null],
+            ['workspaces', '🏢 Workspaces', workspaces.length],
+          ] as const).map(([id, label, count]) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={id}
+              onClick={() => setActiveTab(id as any)}
               style={{
-                background: activeTab === tab ? '#6366F1' : 'transparent',
-                color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer',
-                borderRadius: 6, fontWeight: activeTab === tab ? 600 : 400,
+                background: 'transparent',
+                color: activeTab === id ? t.text : t.textMuted,
+                border: 'none',
+                padding: '12px 18px',
+                cursor: 'pointer',
+                fontWeight: activeTab === id ? 600 : 400,
+                fontSize: 14,
+                borderBottom: `2px solid ${activeTab === id ? t.accent : 'transparent'}`,
+                marginBottom: -1,
+                fontFamily: 'inherit',
+                transition: 'color 0.15s',
               }}
             >
-              {tab === 'inquiries' ? `📬 Solicitudes (${inquiries.length})`
-                : tab === 'onboard' ? '✨ Crear Enterprise'
-                : `🏢 Workspaces (${workspaces.length})`}
+              {label} {count != null && <span style={{ color: t.textDim, fontSize: 12, marginLeft: 4 }}>({count})</span>}
             </button>
           ))}
         </div>
@@ -282,133 +394,212 @@ export function AdminPage() {
         {/* INQUIRIES TAB */}
         {activeTab === 'inquiries' && (
           <div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
               {(['new', 'contacted', 'qualified', 'converted', 'rejected'] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setInquiryFilter(s)}
                   style={{
-                    background: inquiryFilter === s ? '#444' : 'transparent',
-                    color: '#ccc', border: '1px solid #444', padding: '6px 12px',
-                    cursor: 'pointer', borderRadius: 4, fontSize: 13,
+                    background: inquiryFilter === s ? t.accentSoft : 'transparent',
+                    color: inquiryFilter === s ? t.accentHi : t.textMuted,
+                    border: `1px solid ${inquiryFilter === s ? t.accent : t.border}`,
+                    padding: '6px 14px', cursor: 'pointer', borderRadius: 999, fontSize: 12, fontFamily: 'inherit',
+                    textTransform: 'capitalize', transition: 'all 0.15s',
                   }}
                 >
                   {s}
                 </button>
               ))}
             </div>
-            {inquiries.length === 0 && <p style={{ color: '#888' }}>No hay solicitudes en esta categoría.</p>}
-            <div style={{ display: 'grid', gap: 12 }}>
-              {inquiries.map((inq) => (
-                <div key={inq.id} style={{ background: '#1a1a2e', padding: 16, borderRadius: 8, border: '1px solid #333' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 16 }}>{inq.company} <span style={{ color: '#888', fontSize: 13 }}>· {inq.num_users} usuarios</span></h3>
-                      <p style={{ margin: '4px 0', color: '#ccc', fontSize: 13 }}>
-                        {inq.name} ({inq.role || 'sin rol'}) — <a href={`mailto:${inq.email}`} style={{ color: '#6366F1' }}>{inq.email}</a>
-                      </p>
-                      <p style={{ margin: 0, fontSize: 11, color: '#666' }}>{new Date(inq.created_at).toLocaleString()}</p>
-                      {inq.message && <p style={{ background: '#0B0B0B', padding: 10, borderRadius: 4, fontSize: 13, marginTop: 10, whiteSpace: 'pre-wrap' }}>{inq.message}</p>}
+            {inquiries.length === 0 ? (
+              <EmptyState icon="📭" title="Sin solicitudes" desc={`No hay solicitudes en estado "${inquiryFilter}".`} t={t} />
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {inquiries.map((inq) => (
+                  <div key={inq.id} style={{ ...Card, padding: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{inq.company}</h3>
+                          <Badge t={t} color={inq.num_users && inq.num_users >= 20 ? t.success : t.accent}>
+                            {inq.num_users} usuarios
+                          </Badge>
+                          <span style={{ fontSize: 11, color: t.textDim }}>{formatRelative(inq.created_at)}</span>
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: t.textMuted }}>
+                          <span style={{ color: t.text }}>{inq.name}</span>
+                          {inq.role && <span style={{ color: t.textDim }}> · {inq.role}</span>}
+                          {' · '}
+                          <a href={`mailto:${inq.email}`} style={{ color: t.accentHi, textDecoration: 'none' }}>{inq.email}</a>
+                        </div>
+                        {inq.message && (
+                          <div style={{
+                            marginTop: 12, padding: 12, background: t.bg, borderRadius: 8,
+                            fontSize: 13, color: t.textMuted, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                            border: `1px solid ${t.border}`,
+                          }}>
+                            {inq.message}
+                          </div>
+                        )}
+                      </div>
+                      {inq.status === 'new' && (
+                        <button
+                          onClick={() => useInquiryAsTemplate(inq)}
+                          style={{
+                            background: `linear-gradient(135deg, ${t.accent}, ${t.accentHi})`,
+                            color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8,
+                            cursor: 'pointer', fontWeight: 500, fontSize: 13, fontFamily: 'inherit',
+                            whiteSpace: 'nowrap', flexShrink: 0,
+                          }}
+                        >
+                          Convertir →
+                        </button>
+                      )}
                     </div>
-                    {inq.status === 'new' && (
-                      <button onClick={() => useInquiryAsTemplate(inq)} style={{ background: '#22C55E', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        Convertir →
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* ONBOARD TAB */}
         {activeTab === 'onboard' && (
-          <div style={{ background: '#1a1a2e', padding: 24, borderRadius: 8 }}>
-            <h2 style={{ marginTop: 0 }}>Crear Enterprise Workspace</h2>
+          <div style={{ ...Card, padding: 28 }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 600, letterSpacing: -0.3 }}>Crear Enterprise Workspace</h2>
+            <p style={{ margin: '0 0 24px', color: t.textMuted, fontSize: 14, lineHeight: 1.5 }}>
+              Invita usuarios, crea el workspace y genera la subscription Stripe en un solo paso.
+            </p>
+
             {selectedInquiryId && (
-              <div style={{ background: '#22C55E22', border: '1px solid #22C55E', padding: 10, borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
-                ✨ Pre-llenado desde solicitud. Al onboardear, se marcará como convertida automáticamente.
+              <div style={{
+                background: t.successSoft, border: `1px solid ${t.success}`,
+                padding: '12px 14px', borderRadius: 8, marginBottom: 20, fontSize: 13, color: t.success,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <span>✨</span>
+                <span>Pre-llenado desde solicitud. Al crear, se marcará como convertida automáticamente.</span>
               </div>
             )}
-            {error && <div style={{ background: '#EF4444', color: '#fff', padding: 10, borderRadius: 4, marginBottom: 16 }}>{error}</div>}
+
+            {error && (
+              <div style={{ background: t.dangerSoft, border: `1px solid ${t.danger}`, color: t.danger, padding: 12, borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleOnboard}>
-              <label style={{ display: 'block', marginBottom: 12 }}>
-                <div style={{ marginBottom: 4, fontSize: 13, color: '#ccc' }}>Nombre de la empresa *</div>
+              <Field label="Nombre de la empresa" required t={t}>
                 <input
                   type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required
-                  style={{ width: '100%', padding: 10, background: '#0B0B0B', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 14 }}
+                  style={inputStyle(t)} placeholder="Acme Corp"
                 />
-              </label>
+              </Field>
 
-              <label style={{ display: 'block', marginBottom: 12 }}>
-                <div style={{ marginBottom: 4, fontSize: 13, color: '#ccc' }}>
-                  Usuarios (uno por línea) *
-                  <span style={{ color: '#888', fontWeight: 400, marginLeft: 8, fontSize: 11 }}>
-                    Formato: <code>email[,owner|admin|member]</code> · El primero sin rol = owner
-                  </span>
-                </div>
+              <Field label="Usuarios" required hint="Un email por línea. Formato: email[,owner|admin|member]. El primer email sin rol = owner." t={t}>
                 <textarea
                   value={usersText} onChange={(e) => setUsersText(e.target.value)} required
                   placeholder={'ceo@acme.com\ncto@acme.com,admin\ndev1@acme.com\ndev2@acme.com'}
                   rows={6}
-                  style={{ width: '100%', padding: 10, background: '#0B0B0B', color: '#fff', border: '1px solid #333', borderRadius: 4, fontFamily: 'monospace', fontSize: 13 }}
+                  style={{ ...inputStyle(t), fontFamily: '"JetBrains Mono", Menlo, monospace', fontSize: 13, resize: 'vertical' }}
                 />
-              </label>
+              </Field>
 
-              <div style={{ marginBottom: 16, padding: 16, border: '1px dashed #444', borderRadius: 4 }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={enableBilling} onChange={(e) => setEnableBilling(e.target.checked)} style={{ marginRight: 8 }} />
-                  <span style={{ fontSize: 14 }}>Crear suscripción Stripe automáticamente</span>
+              <div style={{
+                marginTop: 8, padding: 18, border: `1px solid ${t.border}`, borderRadius: 10,
+                background: enableBilling ? t.surfaceHi : 'transparent', transition: 'all 0.15s',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 10 }}>
+                  <input
+                    type="checkbox" checked={enableBilling} onChange={(e) => setEnableBilling(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: t.accent }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>Crear suscripción Stripe automáticamente</span>
                 </label>
                 {enableBilling && (
-                  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Monto USD</div>
+                  <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 12 }}>
+                    <SubField label="Monto USD" t={t}>
                       <input
                         type="number" value={billingAmount} onChange={(e) => setBillingAmount(e.target.value)} min={1}
-                        style={{ width: '100%', padding: 8, background: '#0B0B0B', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 13 }}
+                        style={inputStyle(t)}
                       />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Cada</div>
+                    </SubField>
+                    <SubField label="Cada" t={t}>
                       <select
                         value={billingInterval} onChange={(e) => setBillingInterval(e.target.value as 'month' | 'year')}
-                        style={{ width: '100%', padding: 8, background: '#0B0B0B', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 13 }}
+                        style={inputStyle(t)}
                       >
                         <option value="month">mes</option>
                         <option value="year">año</option>
                       </select>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Email de facturación</div>
+                    </SubField>
+                    <SubField label="Email de facturación" t={t}>
                       <input
                         type="email" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)}
-                        placeholder="billing@acme.com"
-                        style={{ width: '100%', padding: 8, background: '#0B0B0B', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 13 }}
+                        placeholder="billing@acme.com" style={inputStyle(t)}
                       />
-                    </div>
+                    </SubField>
                   </div>
                 )}
               </div>
 
-              <button type="submit" disabled={submitting}
-                style={{ background: '#6366F1', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: 6, cursor: submitting ? 'wait' : 'pointer', fontWeight: 600, fontSize: 15 }}>
-                {submitting ? 'Procesando…' : 'Crear Enterprise'}
+              <button
+                type="submit" disabled={submitting}
+                style={{
+                  marginTop: 24, background: submitting ? t.surfaceHi : `linear-gradient(135deg, ${t.accent}, ${t.accentHi})`,
+                  color: '#fff', border: 'none', padding: '14px 28px', borderRadius: 10,
+                  cursor: submitting ? 'wait' : 'pointer', fontWeight: 600, fontSize: 15, fontFamily: 'inherit',
+                  boxShadow: submitting ? 'none' : `0 4px 16px ${t.accentSoft}`, transition: 'all 0.15s',
+                }}
+              >
+                {submitting ? 'Procesando…' : 'Crear Enterprise →'}
               </button>
             </form>
 
             {result && (
-              <div style={{ marginTop: 24, padding: 16, background: result.ok ? '#22C55E22' : '#EF444422', border: `1px solid ${result.ok ? '#22C55E' : '#EF4444'}`, borderRadius: 4 }}>
-                <h3 style={{ marginTop: 0 }}>{result.ok ? '✅ Listo' : '⚠️ Resultado'}</h3>
-                <pre style={{ fontSize: 11, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(result, null, 2)}</pre>
-                {result.stripe?.invoice_url && (
-                  <p style={{ marginTop: 10 }}>
-                    <a href={result.stripe.invoice_url} target="_blank" rel="noopener" style={{ color: '#6366F1' }}>
-                      Ver invoice en Stripe →
-                    </a>
-                  </p>
+              <div style={{
+                marginTop: 24, padding: 18, background: result.ok ? t.successSoft : t.dangerSoft,
+                border: `1px solid ${result.ok ? t.success : t.danger}`, borderRadius: 10,
+              }}>
+                <h3 style={{ marginTop: 0, fontSize: 15, color: result.ok ? t.success : t.danger }}>
+                  {result.ok ? '✓ Enterprise creada exitosamente' : '⚠️ Resultado parcial'}
+                </h3>
+                {result.workspace_id && (
+                  <div style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>
+                    Workspace: <code style={{ color: t.text, background: t.bg, padding: '2px 6px', borderRadius: 4 }}>{result.workspace_id}</code>
+                  </div>
                 )}
+                {result.invite_results && (
+                  <div style={{ fontSize: 13, color: t.textMuted, marginTop: 12 }}>
+                    Usuarios procesados:
+                    <ul style={{ marginTop: 4, paddingLeft: 20 }}>
+                      {result.invite_results.map((r: any, i: number) => (
+                        <li key={i}>
+                          <code>{r.email}</code> — <span style={{ color: r.status === 'failed' ? t.danger : t.success }}>{r.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {result.stripe?.invoice_url && (
+                  <a
+                    href={result.stripe.invoice_url} target="_blank" rel="noopener"
+                    style={{
+                      display: 'inline-block', marginTop: 12, padding: '8px 14px',
+                      background: t.accent, color: '#fff', textDecoration: 'none',
+                      borderRadius: 6, fontSize: 13, fontWeight: 500,
+                    }}
+                  >
+                    Ver invoice en Stripe →
+                  </a>
+                )}
+                <details style={{ marginTop: 14, fontSize: 12, color: t.textDim }}>
+                  <summary style={{ cursor: 'pointer' }}>Ver detalle técnico</summary>
+                  <pre style={{
+                    fontSize: 11, overflow: 'auto', whiteSpace: 'pre-wrap',
+                    background: t.bg, padding: 12, borderRadius: 6, marginTop: 8,
+                  }}>{JSON.stringify(result, null, 2)}</pre>
+                </details>
               </div>
             )}
           </div>
@@ -417,84 +608,187 @@ export function AdminPage() {
         {/* WORKSPACES TAB */}
         {activeTab === 'workspaces' && (
           <div>
-            {workspaces.length === 0 && <p style={{ color: '#888' }}>No hay workspaces enterprise activos aún.</p>}
-            <div style={{ display: 'grid', gap: 12 }}>
-              {workspaces.map((w) => (
-                <div key={w.id} style={{ background: '#1a1a2e', padding: 16, borderRadius: 8, border: '1px solid #333' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 16 }}>{w.name}</h3>
-                      <p style={{ margin: '4px 0', color: '#ccc', fontSize: 13 }}>
-                        Owner: {w.owner_email} · {w.member_count} miembros · creado {new Date(w.created_at).toLocaleDateString()}
-                      </p>
-                      <p style={{ margin: 0, fontSize: 11, color: '#666' }}>ID: <code>{w.id}</code></p>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => {
-                          const next = expandedWs === w.id ? null : w.id;
-                          setExpandedWs(next);
-                          if (next && !wsMembers[w.id]) fetchMembers(w.id);
-                        }}
-                        style={{ background: '#444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
-                      >
-                        {expandedWs === w.id ? 'Ocultar' : 'Ver miembros'}
-                      </button>
-                      <button onClick={() => handleCancelStripe(w.id)} style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
-                        Cancelar Stripe
-                      </button>
-                    </div>
-                  </div>
-
-                  {expandedWs === w.id && (
-                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #333' }}>
-                      <h4 style={{ marginTop: 0 }}>Miembros</h4>
-                      {(wsMembers[w.id] ?? []).map((m: any) => (
-                        <div key={m.user_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
-                          <span>
-                            <strong>{m.profiles?.email || m.user_id.slice(0, 8)}</strong>
-                            <span style={{ color: '#888', marginLeft: 8 }}>{m.role}</span>
-                            <span style={{ color: '#666', marginLeft: 8, fontSize: 11 }}>plan: {m.profiles?.plan}</span>
-                          </span>
-                          {m.role !== 'owner' && (
-                            <button onClick={() => handleRemoveUser(w.id, m.profiles?.email)} style={{ background: 'transparent', color: '#EF4444', border: '1px solid #EF4444', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>
-                              Quitar
-                            </button>
-                          )}
+            {workspaces.length === 0 ? (
+              <EmptyState icon="🏢" title="Sin workspaces aún" desc="Cuando convierts una solicitud, aparece aquí." t={t} />
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {workspaces.map((w) => (
+                  <div key={w.id} style={{ ...Card, padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: 18 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{w.name}</h3>
+                            <Badge t={t} color={t.success}>{w.member_count} miembros</Badge>
+                          </div>
+                          <div style={{ fontSize: 13, color: t.textMuted, marginTop: 4 }}>
+                            Owner: <span style={{ color: t.text }}>{w.owner_email || '—'}</span> · creado {formatRelative(w.created_at)}
+                          </div>
+                          <div style={{ fontSize: 11, color: t.textDim, marginTop: 4, fontFamily: '"JetBrains Mono", Menlo, monospace' }}>
+                            {w.id}
+                          </div>
                         </div>
-                      ))}
-
-                      <div style={{ marginTop: 16, padding: 12, background: '#0B0B0B', borderRadius: 4 }}>
-                        <h4 style={{ marginTop: 0, fontSize: 13 }}>Agregar usuarios</h4>
-                        <textarea
-                          value={wsAddEmails[w.id] ?? ''}
-                          onChange={(e) => setWsAddEmails((prev) => ({ ...prev, [w.id]: e.target.value }))}
-                          placeholder="email1@empresa.com&#10;email2@empresa.com"
-                          rows={2}
-                          style={{ width: '100%', padding: 8, background: '#1a1a2e', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 12, fontFamily: 'monospace' }}
-                        />
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                          <select
-                            value={wsAddRole[w.id] ?? 'member'}
-                            onChange={(e) => setWsAddRole((prev) => ({ ...prev, [w.id]: e.target.value as any }))}
-                            style={{ padding: 6, background: '#1a1a2e', color: '#fff', border: '1px solid #333', borderRadius: 4, fontSize: 12 }}
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                          <button
+                            onClick={() => {
+                              const next = expandedWs === w.id ? null : w.id;
+                              setExpandedWs(next);
+                              if (next && !wsMembers[w.id]) fetchMembers(w.id);
+                            }}
+                            style={btnStyle(t, 'secondary')}
                           >
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                          <button onClick={() => handleAddUsers(w.id)} style={{ background: '#22C55E', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
-                            Agregar
+                            {expandedWs === w.id ? 'Ocultar' : 'Gestionar'}
+                          </button>
+                          <button onClick={() => handleCancelStripe(w.id)} style={btnStyle(t, 'danger')}>
+                            Cancelar Stripe
                           </button>
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+
+                    {expandedWs === w.id && (
+                      <div style={{ borderTop: `1px solid ${t.border}`, padding: 18, background: t.bg }}>
+                        <h4 style={{ margin: '0 0 12px', fontSize: 13, color: t.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Miembros</h4>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          {(wsMembers[w.id] ?? []).map((m: any) => (
+                            <div key={m.user_id} style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 12px', background: t.surface, borderRadius: 6, fontSize: 13,
+                            }}>
+                              <div>
+                                <span style={{ color: t.text, fontWeight: 500 }}>{m.profiles?.email || m.user_id.slice(0, 8)}</span>
+                                <Badge t={t} color={m.role === 'owner' ? t.warn : m.role === 'admin' ? t.accent : t.textMuted} style={{ marginLeft: 10 }}>
+                                  {m.role}
+                                </Badge>
+                                <span style={{ marginLeft: 10, fontSize: 11, color: t.textDim }}>plan: {m.profiles?.plan}</span>
+                              </div>
+                              {m.role !== 'owner' && (
+                                <button
+                                  onClick={() => handleRemoveUser(w.id, m.profiles?.email)}
+                                  style={{
+                                    background: 'transparent', color: t.danger,
+                                    border: `1px solid ${t.danger}`, padding: '4px 10px',
+                                    borderRadius: 6, cursor: 'pointer', fontSize: 11, fontFamily: 'inherit',
+                                  }}
+                                >
+                                  Quitar
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{
+                          marginTop: 16, padding: 14, background: t.surface, borderRadius: 8,
+                          border: `1px solid ${t.border}`,
+                        }}>
+                          <h4 style={{ margin: '0 0 10px', fontSize: 13, color: t.textMuted, fontWeight: 500 }}>Agregar usuarios</h4>
+                          <textarea
+                            value={wsAddEmails[w.id] ?? ''}
+                            onChange={(e) => setWsAddEmails((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                            placeholder={'nuevo1@empresa.com\nnuevo2@empresa.com'}
+                            rows={2} style={{ ...inputStyle(t), fontSize: 12, fontFamily: '"JetBrains Mono", Menlo, monospace' }}
+                          />
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                            <select
+                              value={wsAddRole[w.id] ?? 'member'}
+                              onChange={(e) => setWsAddRole((prev) => ({ ...prev, [w.id]: e.target.value as any }))}
+                              style={{ ...inputStyle(t), width: 'auto', flexShrink: 0 }}
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                            <button onClick={() => handleAddUsers(w.id)} style={btnStyle(t, 'primary')}>
+                              Agregar e invitar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+// ── Subcomponents ──────────────────────────────────────────────────────────
+function StatCard({ label, value, hint, color, t }: { label: string; value: number; hint?: string; color: string; t: any }) {
+  return (
+    <div style={{
+      background: t.surface, border: `1px solid ${t.border}`,
+      borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: color }} />
+      <div style={{ fontSize: 12, color: t.textMuted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 700, color: t.text, marginTop: 6, letterSpacing: -1 }}>{value}</div>
+      {hint && <div style={{ fontSize: 11, color: t.textDim, marginTop: 4 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function Badge({ children, color, t, style }: { children: React.ReactNode; color: string; t: any; style?: React.CSSProperties }) {
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+      background: color + '22', color, fontSize: 11, fontWeight: 500, ...style,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Field({ label, required, hint, children, t }: { label: string; required?: boolean; hint?: string; children: React.ReactNode; t: any }) {
+  return (
+    <label style={{ display: 'block', marginBottom: 16 }}>
+      <div style={{ marginBottom: 6, fontSize: 13, color: t.text, fontWeight: 500 }}>
+        {label} {required && <span style={{ color: t.accent }}>*</span>}
+      </div>
+      {hint && <div style={{ fontSize: 11, color: t.textDim, marginBottom: 6 }}>{hint}</div>}
+      {children}
+    </label>
+  );
+}
+
+function SubField({ label, children, t }: { label: string; children: React.ReactNode; t: any }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, desc, t }: { icon: string; title: string; desc: string; t: any }) {
+  return (
+    <div style={{ textAlign: 'center', padding: 60, color: t.textMuted }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>{icon}</div>
+      <h3 style={{ margin: '0 0 6px', fontSize: 16, color: t.text, fontWeight: 600 }}>{title}</h3>
+      <p style={{ margin: 0, fontSize: 13 }}>{desc}</p>
+    </div>
+  );
+}
+
+function inputStyle(t: any): React.CSSProperties {
+  return {
+    width: '100%', padding: 10, background: t.bg, color: t.text,
+    border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 14, fontFamily: 'inherit',
+    outline: 'none', transition: 'border-color 0.15s',
+    boxSizing: 'border-box',
+  };
+}
+
+function btnStyle(t: any, variant: 'primary' | 'secondary' | 'danger'): React.CSSProperties {
+  const base: React.CSSProperties = {
+    border: 'none', padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
+    fontSize: 12, fontFamily: 'inherit', fontWeight: 500, transition: 'all 0.15s',
+    whiteSpace: 'nowrap',
+  };
+  if (variant === 'primary') return { ...base, background: t.accent, color: '#fff' };
+  if (variant === 'danger') return { ...base, background: 'transparent', color: t.danger, border: `1px solid ${t.danger}` };
+  return { ...base, background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}` };
 }
