@@ -12,6 +12,7 @@ import {
   getUserPlatforms,
   type SubscriptionInfo,
 } from '../lib/subscription';
+import { PricingPlans } from './PricingPlans';
 
 // Stripe Checkout — invokes the stripe-checkout edge function and redirects.
 async function handleStripeCheckout(
@@ -255,28 +256,16 @@ export default function SettingsPage() {
           {/* Free user — show upgrade */}
           {subscription.plan === 'free' && (
             <div className="note-section" style={{ marginTop: 24 }}>
-              <h2>{t('settings.upgrade')}</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-                <UpgradeCard
-                  name="Premium"
-                  price="$14.99/mo"
-                  features={['Hasta 50 notas/día', 'Audio hasta 30 min', 'Los 9 modos IA', 'Chat con IA (100/día)', 'Export PDF + Excel', 'API personal']}
-                  featured
-                  onSelect={() => handleStripeCheckout('premium', 'month', toast)}
-                />
-                <UpgradeCard
-                  name="Pro+"
-                  price="$29.99/mo"
-                  features={['Hasta 200 notas/día', 'Audio hasta 60 min', '8 horas audio/día', 'Chat con IA (500/día)', 'Soporte prioritario', 'Todo lo de Premium']}
-                  onSelect={() => handleStripeCheckout('pro_plus', 'month', toast)}
-                />
-                <UpgradeCard
-                  name="Enterprise"
-                  price="Personalizado"
-                  features={['Para equipos de 5+', 'Workspaces compartidos', 'MCP integrations', 'API ilimitada', 'SSO opcional', 'Soporte dedicado']}
-                  onSelect={() => { window.location.href = '/enterprise'; }}
-                />
+              <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                <h2 style={{ fontSize: 28, marginBottom: 8, letterSpacing: '-0.5px' }}>Elige tu plan</h2>
+                <p style={{ color: 'var(--text2)', fontSize: 14, margin: 0 }}>
+                  Convierte tu voz en resultados — desde notas personales hasta workspaces de equipo.
+                </p>
               </div>
+              <PricingPlans
+                onSelectStripe={(tier, interval) => handleStripeCheckout(tier, interval, toast)}
+                onSelectEnterprise={() => { window.location.href = '/enterprise'; }}
+              />
             </div>
           )}
 

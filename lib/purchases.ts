@@ -56,7 +56,21 @@ type CustomerInfo = {
 
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS ?? '';
 const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID ?? '';
-const ENTITLEMENT_ID = 'premium';
+
+// Entitlement IDs configured in RevenueCat dashboard.
+// Pro+ is checked first because it's the higher tier — pro_plus customers also
+// satisfy "is paid", and we want to surface the highest tier they hold.
+const ENTITLEMENT_PRO_PLUS = 'pro_plus';
+const ENTITLEMENT_PREMIUM = 'premium';
+
+type ResolvedTier = 'free' | 'premium' | 'pro_plus';
+
+function tierFromCustomerInfo(info: { entitlements: { active: Record<string, unknown> } }): ResolvedTier {
+  const active = info.entitlements.active;
+  if (active[ENTITLEMENT_PRO_PLUS] != null) return 'pro_plus';
+  if (active[ENTITLEMENT_PREMIUM] != null) return 'premium';
+  return 'free';
+}
 
 function getApiKey(): string {
   if (Platform.OS === 'ios') return REVENUECAT_IOS_KEY;
@@ -177,14 +191,15 @@ export async function purchasePackage(
   try {
     track('purchase_started', { product: pkg.identifier });
     const { customerInfo } = await Purchases.purchasePackage(pkg);
-    const isPremium = customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
+    const tier = tierFromCustomerInfo(customerInfo);
+    const isPaid = tier !== 'free';
 
-    if (isPremium) {
-      track('purchase_completed', { product: pkg.identifier });
-      track('premium_unlocked', { source: 'purchase' });
+    if (isPaid) {
+      track('purchase_completed', { product: pkg.identifier, tier });
+      track('premium_unlocked', { source: 'purchase', tier });
     }
 
-    return { success: isPremium, customerInfo };
+    return { success: isPaid, customerInfo };
   } catch (err: unknown) {
     const error = err as { userCancelled?: boolean; code?: string; message?: string };
 
@@ -220,16 +235,17 @@ export async function restorePurchases(): Promise<{
   try {
     track('restore_started', {});
     const customerInfo = await Purchases.restorePurchases();
-    const isPremium = customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
+    const tier = tierFromCustomerInfo(customerInfo);
+    const isPaid = tier !== 'free';
 
-    if (isPremium) {
-      track('restore_completed', { found: true });
-      track('premium_unlocked', { source: 'restore' });
+    if (isPaid) {
+      track('restore_completed', { found: true, tier });
+      track('premium_unlocked', { source: 'restore', tier });
     } else {
       track('restore_completed', { found: false });
     }
 
-    return { success: isPremium, customerInfo };
+    return { success: isPaid, customerInfo };
   } catch (err: unknown) {
     const error = err as { message?: string };
     track('restore_failed', { error: error.message ?? 'unknown' });
@@ -238,41 +254,40 @@ export async function restorePurchases(): Promise<{
 }
 
 /**
- * Check if user currently has premium entitlement.
+ * Check if user currently has any paid entitlement (premium or pro_plus).
  * This is the source of truth — not profiles.plan.
  */
 export async function checkPremiumEntitlement(): Promise<boolean> {
+  const tier = await checkSubscriptionStatus();
+  return tier !== 'free';
+}
+
+/**
+ * Full subscription status check. Returns 'free', 'premium', or 'pro_plus'.
+ */
+export async function checkSubscriptionStatus(): Promise<ResolvedTier> {
   const Purchases = getRCModule();
-  if (!Purchases || !configured) return false;
+  if (!Purchases || !configured) return 'free';
   try {
     const customerInfo = await Purchases.getCustomerInfo();
-    return customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
+    return tierFromCustomerInfo(customerInfo);
   } catch {
-    return false;
+    return 'free';
   }
 }
 
 /**
- * Full subscription status check. Returns 'free' or 'premium'.
- */
-export async function checkSubscriptionStatus(): Promise<'free' | 'premium'> {
-  const isPremium = await checkPremiumEntitlement();
-  return isPremium ? 'premium' : 'free';
-}
-
-/**
  * Listen for customer info changes (e.g., subscription renewal/expiry).
- * Returns an unsubscribe function.
+ * Returns an unsubscribe function. Callback receives the resolved tier.
  */
 export function onCustomerInfoUpdated(
-  callback: (isPremium: boolean) => void,
+  callback: (tier: ResolvedTier) => void,
 ): () => void {
   const Purchases = getRCModule();
   if (!Purchases || !configured) return () => {};
 
   const listener = (info: CustomerInfo) => {
-    const isPremium = info.entitlements.active[ENTITLEMENT_ID] != null;
-    callback(isPremium);
+    callback(tierFromCustomerInfo(info));
   };
   Purchases.addCustomerInfoUpdateListener(listener);
   return () => Purchases.removeCustomerInfoUpdateListener(listener);

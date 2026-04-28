@@ -11,21 +11,32 @@ DROP FUNCTION IF EXISTS public.cleanup_deleted_note_audio() CASCADE;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- Wrapper function that invokes the storage-cleanup edge function.
--- The shared secret is hardcoded here; the function is SECURITY DEFINER and
--- revoked from public so end users can't read it. cron.job is admin-only too.
+-- The shared secret is read from Supabase Vault at runtime (NOT hardcoded).
+-- Setup: secret must be inserted into vault as 'storage_cleanup_secret' via
+-- the dashboard SQL editor (see ADMIN runbook). This file does NOT contain
+-- the secret value to prevent leakage in source control.
 CREATE OR REPLACE FUNCTION public.invoke_storage_cleanup()
 RETURNS BIGINT
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, net
+SET search_path = public, net, vault
 AS $$
 DECLARE
   v_request_id BIGINT;
+  v_secret TEXT;
 BEGIN
+  SELECT decrypted_secret INTO v_secret
+  FROM vault.decrypted_secrets
+  WHERE name = 'storage_cleanup_secret';
+
+  IF v_secret IS NULL THEN
+    RAISE EXCEPTION 'storage_cleanup_secret missing from vault. Set it via Dashboard SQL Editor.';
+  END IF;
+
   SELECT net.http_post(
     url := 'https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/storage-cleanup',
     headers := jsonb_build_object(
-      'Authorization', 'Bearer f716d43c75e8953d9aacd97e611b562f0b951ca28b9bbe6db33e5c12565abbbb',
+      'Authorization', 'Bearer ' || v_secret,
       'Content-Type', 'application/json'
     ),
     body := '{}'::jsonb

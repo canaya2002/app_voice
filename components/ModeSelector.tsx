@@ -22,7 +22,7 @@ interface ModeSelectorProps {
   onSelectMode: (mode: OutputMode) => void;
   onGenerateMode: (mode: OutputMode) => void;
   onPremiumRequired?: (mode: OutputMode) => void;
-  userPlan?: 'free' | 'premium' | 'enterprise';
+  userPlan?: 'free' | 'premium' | 'pro_plus' | 'enterprise';
   loading?: boolean;
   loadingMode?: OutputMode | null;
 }

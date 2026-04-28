@@ -1,6 +1,6 @@
 # Sythio — Pasos para Lanzar a Producción
 
-**Última actualización:** 2026-04-28
+**Última actualización:** 2026-04-28 (sesión RevenueCat in-progress)
 **Audiencia:** Carlos (founder/dev)
 **Objetivo:** TestFlight → App Store iOS (Android se hará después, sin dev account aún)
 
@@ -16,24 +16,113 @@
 | 1.3 | Apple Developer | Sign In with Apple, AASA file desplegado |
 | 1.4 | Supabase Auth (Apple) | Provider via JWS |
 | 2.1 | Supabase Secrets | 13 secrets (Stripe x8, Anthropic, Groq, RevenueCat, Enterprise inquiry config) |
-| 2.2 | Migraciones SQL | 19/19 sincronizadas (incluye tier restructure + security lockdown + atomic increments) |
-| 2.3 | Edge Functions | 13 deployadas (nueva: `enterprise-inquiry`) |
+| 2.2 | Migraciones SQL | 21/21 sincronizadas (tier restructure + security lockdown + atomic increments + admin flag + cron via vault) |
+| 2.3 | Edge Functions | 17 deployadas (incluyendo: enterprise-inquiry, storage-cleanup, verify-captcha, admin-onboard-enterprise, admin-list-workspaces) |
 | 4.1 | Vercel deploy | sythio.app live |
 | 4.2 | DNS | sythio.app + www.sythio.app con SSL |
-| — | **Tier restructure** (2026-04-28) | free / premium / **pro_plus** / **enterprise** (custom B2B) |
+| — | **Tier restructure** | free / premium / **pro_plus** / **enterprise** (custom B2B) |
 | — | **Forgot password** | Mobile + web → email con link a `/auth/reset` |
-| — | **Enterprise contact** | `/enterprise` page → form → DB + email vía Resend |
+| — | **Enterprise contact** | `/enterprise` page → form → DB + email vía Resend (sythio.app verificado) |
+| — | **Admin Dashboard** | `/admin` con UI premium — onboard enterprise en 1 click |
 | — | **Security lockdown** | Trigger bloquea UPDATE de plan + counters; RPCs con auth check |
-| — | **Bug fixes pre-launch** | DAILY_LIMITS para todos los tiers, race conditions arregladas, anti-spoof de duration |
+| — | **Storage cleanup** | pg_cron diario 04:00 UTC, borra audio de papelera 7+ días vía edge function (vault) |
+| — | **Bug fixes pre-launch** | DAILY_LIMITS para todos los tiers, race conditions, anti-spoof, RLS recursion fix |
+| — | **Resend** | API key configurada con sythio.app (dominio verificado, emails funcionan) |
+| — | **Secret rotation** | Token leakeado rotado via Supabase Vault (incident GitGuardian resuelto) |
 
 ### 🔴 Pendiente — todo iOS mobile
 
-| # | Bloque | Tiempo |
-|---|---|---|
-| 1.2 | **RevenueCat (solo iOS)** ← siguiente | 30-45 min |
-| 3.1 | EAS Build setup | 20 min |
-| 3.2 | Production build → TestFlight | 30 min build + 24h review |
-| 3.3 | Submit a App Store | 1-2 días review Apple |
+| # | Bloque | Status | Tiempo |
+|---|---|---|---|
+| 1.2 | **RevenueCat (solo iOS)** ← AQUÍ ESTAMOS | 🟡 In progress | 30-45 min |
+| 3.1 | EAS Build setup | ✅ Credenciales configuradas | 0 min (listo) |
+| 3.2 | Production build → TestFlight | ⏳ Pendiente RC | 30 min build + 24h review |
+| 3.3 | Submit a App Store | ⏳ Pendiente | 1-2 días review Apple |
+
+---
+
+## 🎯 Donde estamos AHORA (1.2 RevenueCat)
+
+### Sub-pasos completados ✅
+- [x] App `com.sythio.app` creada en App Store Connect (Apple ID `6764143516`)
+- [x] Tax/Banking en estado **Active** en ASC
+- [x] Subscription Group `Sythio` creado
+- [x] **4 productos creados** en ASC con IDs `_v2` (originales quedaron reservados):
+  - `sythio_premium_monthly_v2` ($14.99/mes, Level 2)
+  - `sythio_premium_yearly_v2` ($149.99/año, Level 2)
+  - `sythio_pro_plus_monthly_v2` ($29.99/mes, Level 1)
+  - `sythio_pro_plus_yearly_v2` ($299.99/año, Level 1)
+- [x] **Los 4 productos en estado "Listo para enviar"** — metadatos completos (precios, localización, capturas, notas de revisión, family sharing, todos los países)
+- [x] **Cuenta RevenueCat creada** (proyecto `Sythio`)
+- [x] **API Key de RC** ya estaba configurada en `.env` y `eas.json`: `appl_YQBZEnATAggxJJLdlXjZDoiaYlC`
+- [x] **EAS credentials** ya configuradas (Distribution Cert + Provisioning Profile + Push Key + ASC API Key — ver `eas credentials` output)
+- [x] **Bug fix mobile crítico**: `lib/purchases.ts` actualizado para reconocer entitlements `premium` Y `pro_plus` (antes solo veía `premium`)
+- [x] **`eas.json`** actualizado con `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` en los 3 perfiles (sin esto, paywall mobile fallaría con "no products available")
+- [x] Tipos `Plan` actualizados en `types/index.ts`, `stores/authStore.ts`, `components/ModeSelector.tsx`, `components/ModePicker.tsx` para incluir `pro_plus`
+- [x] **Pricing UI premium en web** — nuevo componente `PricingPlans.tsx` con toggle mensual/anual, los 3 tiers visibles (Premium / Pro+ destacado / Enterprise), badge "Más popular", gradients, deployado a sythio.app/settings
+
+### 🔴 Sub-pasos PENDIENTES (en orden)
+
+#### FASE 4 — Conectar RC con ASC API ← SIGUIENTE
+1. ASC → Users and Access → tab Integrations → App Store Connect API → tab Team Keys → "+"
+2. Name: `RevenueCat`, Access: **Admin** → Generate
+3. Anotar **Issuer ID**, **Key ID**, descargar **`.p8`** (UNA sola vez)
+4. RC Dashboard → Project Settings → Apps → iOS Sythio → scroll a "App Store Connect API"
+5. Pegar Issuer ID, Key ID, contenido completo del `.p8` (incluyendo BEGIN/END markers)
+6. Save → esperar 10-30s → verificar que en RC > Products aparezcan los 4 productos `_v2`
+
+#### FASE 5 — Crear Entitlements en RC
+Crear 2 entitlements con identifiers EXACTOS (hardcoded en `lib/purchases.ts`):
+
+**Entitlement `premium`** (lowercase):
+- Display Name: `Premium`
+- Attach products: `sythio_premium_monthly_v2`, `sythio_premium_yearly_v2`
+
+**Entitlement `pro_plus`** (con underscore):
+- Display Name: `Pro+`
+- Attach products: `sythio_pro_plus_monthly_v2`, `sythio_pro_plus_yearly_v2`
+
+#### FASE 6 — Crear Offerings en RC
+**Offering `default`** (Premium plans):
+- Package preset Monthly (`$rc_monthly`) → `sythio_premium_monthly_v2`
+- Package preset Annual (`$rc_annual`) → `sythio_premium_yearly_v2`
+
+**Offering `pro_plus`** (Pro+ plans):
+- Package Monthly → `sythio_pro_plus_monthly_v2`
+- Package Annual → `sythio_pro_plus_yearly_v2`
+
+⚠️ **Marcar `default` como Current** (3 puntos a su derecha → "Make Current")
+
+#### FASE 7 — Webhook
+- **URL:** `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/revenuecat-webhook`
+- **Authorization Header Value:** `Bearer 807f2793ddd7ec0b2ab0b698a218ace512cfb040e38566623f05e4f199a369d4`
+- **Events:** marcar TODOS
+- **Test event** → debe responder HTTP 200 (si 401 → revisar el espacio entre "Bearer" y el token)
+
+#### FASE 8 — API Key (ya OK, solo verificar)
+RC > Project Settings > API Keys > Public app-specific keys > iOS Sythio
+- Confirmar que empieza con `appl_YQBZEnAT...`
+- Si es DIFERENTE: copiar la nueva y actualizar `eas.json` (3 perfiles) antes del build
+
+#### FASE 9 — Sandbox Tester
+- ASC → Users and Access → tab Sandbox → Testers → "+"
+- Email DIFERENTE al principal (ej: `sythio.tester@gmail.com` o alias `canaya917+sandbox@gmail.com`)
+- Country: **United States** (sandbox funciona mejor en US)
+- Anotar email + password — se usa en iPhone: Settings → App Store → Sandbox Account
+
+### Una vez TODO 1.2 hecho → 3.2 Production Build
+
+```bash
+eas build --profile production --platform ios
+```
+
+(20-30 min) → cuando termine:
+
+```bash
+eas submit --profile production --platform ios
+```
+
+→ TestFlight review (~24h Apple internal review).
 
 ### 🟡 Follow-up post-launch
 - **Setear `RESEND_API_KEY`** en Supabase secrets para que enterprise-inquiry envíe emails (sin esto, solo guarda en DB)

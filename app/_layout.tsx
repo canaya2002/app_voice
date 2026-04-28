@@ -92,8 +92,9 @@ export default function RootLayout() {
       });
 
     // Listen for entitlement changes (renewal, expiry, etc.)
-    const unsubPurchases = onCustomerInfoUpdated((isPremium) => {
-      useAuthStore.getState().setPlan(isPremium ? "premium" : "free");
+    // tier is one of: 'free' | 'premium' | 'pro_plus'
+    const unsubPurchases = onCustomerInfoUpdated((tier) => {
+      useAuthStore.getState().setPlan(tier);
     });
 
     // Register for push notifications (non-blocking, after auth)

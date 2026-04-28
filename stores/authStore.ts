@@ -21,7 +21,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   fetchProfile: () => Promise<void>;
-  setPlan: (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => void;
+  setPlan: (plan: 'free' | 'premium' | 'pro_plus' | 'enterprise', platform?: 'ios' | 'web' | 'android') => void;
   signInWithApple: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>;
 }
 
@@ -226,7 +226,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  setPlan: async (plan: 'free' | 'premium' | 'enterprise', platform?: 'ios' | 'web' | 'android') => {
+  setPlan: async (plan: 'free' | 'premium' | 'pro_plus' | 'enterprise', platform?: 'ios' | 'web' | 'android') => {
     const { user, session } = get();
     if (user) {
       set({ user: { ...user, plan } });

@@ -30,7 +30,7 @@ import { track } from '@/lib/analytics';
 
 interface Props {
   selectedMode: OutputMode;
-  userPlan?: 'free' | 'premium' | 'enterprise';
+  userPlan?: 'free' | 'premium' | 'pro_plus' | 'enterprise';
   onSelect: (mode: OutputMode) => void;
   onPremiumRequired?: (mode: OutputMode) => void;
   source?: 'recording' | 'detail' | 'convert';

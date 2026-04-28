@@ -171,7 +171,314 @@ textarea {
   padding: 0 32px;
 }
 
-/* ── Pricing (used in SettingsPage UpgradeCard) ─────────────────────── */
+/* ── Pricing Plans (PricingPlans.tsx) ──────────────────────────────────
+   Premium 3-tier comparison cards with monthly/yearly toggle.
+   Used in Settings (logged-in upgrade) — designed to also work as
+   an App Store screenshot reference.
+*/
+
+.pp-wrap {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* Toggle pill */
+.pp-toggle {
+  display: inline-flex;
+  background: var(--bg-subtle, #f4f4f7);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  padding: 4px;
+  border-radius: var(--radius-full, 999px);
+  margin: 0 auto 32px;
+  width: fit-content;
+  display: flex;
+  position: relative;
+}
+
+.pp-toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 22px;
+  border-radius: var(--radius-full, 999px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2, #6b7280);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+}
+
+.pp-toggle-btn.active {
+  background: var(--bg, #fff);
+  color: var(--text, #111);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.pp-toggle-save {
+  display: inline-flex;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+
+/* Wrap toggle in a flex container so it centers */
+.pp-wrap > .pp-toggle {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Grid */
+.pp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* Card base */
+.pp-card {
+  position: relative;
+  background: var(--bg, #fff);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  border-radius: 16px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pp-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* Featured card — highlighted with gradient border */
+.pp-card-featured {
+  background: linear-gradient(180deg, #f8f7ff 0%, #ffffff 100%);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.12), 0 4px 12px rgba(99, 102, 241, 0.08);
+  transform: scale(1.02);
+}
+
+.pp-card-featured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.pp-card-featured:hover {
+  transform: scale(1.02) translateY(-2px);
+}
+
+/* "Most popular" badge */
+.pp-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  white-space: nowrap;
+}
+
+/* Card sections */
+.pp-card-head {
+  margin-bottom: 20px;
+}
+
+.pp-name {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text, #111);
+}
+
+.pp-tagline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text2, #6b7280);
+  line-height: 1.4;
+}
+
+/* Price block */
+.pp-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 6px;
+  min-height: 48px;
+}
+
+.pp-currency {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text, #111);
+  margin-right: 2px;
+}
+
+.pp-amount {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  color: var(--text, #111);
+  line-height: 1;
+}
+
+.pp-period {
+  font-size: 14px;
+  color: var(--text2, #6b7280);
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.pp-amount-text {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  color: var(--text, #111);
+  line-height: 1;
+}
+
+.pp-billed {
+  font-size: 12.5px;
+  color: var(--text3, #9ca3af);
+  margin: 0 0 22px;
+  font-weight: 500;
+  min-height: 18px;
+}
+
+.pp-billed-spacer {
+  visibility: visible;
+}
+
+/* CTA buttons */
+.pp-cta {
+  width: 100%;
+  padding: 13px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.18s ease;
+  margin-bottom: 24px;
+}
+
+.pp-cta-primary {
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+}
+
+.pp-cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+}
+
+.pp-cta-secondary {
+  background: var(--bg, #fff);
+  color: var(--text, #111);
+  border: 1.5px solid var(--border-strong, rgba(0, 0, 0, 0.12));
+}
+
+.pp-cta-secondary:hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.04);
+}
+
+/* Features list */
+.pp-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pp-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--text, #111);
+  line-height: 1.5;
+}
+
+.pp-check {
+  flex-shrink: 0;
+  color: #10b981;
+  margin-top: 2px;
+}
+
+.pp-card-featured .pp-check {
+  color: #6366f1;
+}
+
+/* Footer note */
+.pp-footer-note {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text3, #9ca3af);
+  margin-top: 28px;
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+/* Dark mode adjustments (if active) */
+@media (prefers-color-scheme: dark) {
+  .pp-card {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .pp-card-featured {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .pp-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .pp-card-featured {
+    transform: none;
+  }
+  .pp-card-featured:hover {
+    transform: translateY(-2px);
+  }
+  .pp-amount {
+    font-size: 36px;
+  }
+}
+
+/* ── Pricing (legacy UpgradeCard — keeping for fallback) ──────────────── */
 .pricing-badge {
   display: inline-flex;
   padding: 3px 12px;
