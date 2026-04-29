@@ -1173,7 +1173,7 @@ function AIDisclosure() {
   );
 }
 
-export default function ModeResultView({ mode, result, noteId }: ModeResultViewProps) {
+function ModeResultViewBase({ mode, result, noteId }: ModeResultViewProps) {
   let content: React.ReactNode;
   switch (mode) {
     case 'summary':
@@ -1214,6 +1214,9 @@ export default function ModeResultView({ mode, result, noteId }: ModeResultViewP
     </>
   );
 }
+
+const ModeResultView = React.memo(ModeResultViewBase);
+export default ModeResultView;
 
 // ---------------------------------------------------------------------------
 // Styles

@@ -271,7 +271,7 @@ function SegmentBubble({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export default function SpeakerTranscript({
+function SpeakerTranscriptBase({
   segments,
   speakers,
   highlights = [],
@@ -337,6 +337,9 @@ export default function SpeakerTranscript({
     </View>
   );
 }
+
+const SpeakerTranscript = React.memo(SpeakerTranscriptBase);
+export default SpeakerTranscript;
 
 // ---------------------------------------------------------------------------
 // Styles

@@ -95,9 +95,9 @@ serve(async (req: Request) => {
     }
 
     // Validate plan
-    if (!["premium", "enterprise"].includes(plan)) {
+    if (!["premium", "pro_plus", "enterprise"].includes(plan)) {
       return new Response(
-        JSON.stringify({ error: "Invalid plan. Must be premium or enterprise." }),
+        JSON.stringify({ error: "Invalid plan. Must be premium, pro_plus, or enterprise." }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }

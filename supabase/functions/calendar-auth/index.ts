@@ -24,16 +24,24 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/calendar-auth?action=callback`;
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events.readonly";
 
-function getCorsHeaders(): Record<string, string> {
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const ok =
+    !origin ||
+    origin === "https://sythio.app" ||
+    origin === "https://www.sythio.app" ||
+    origin.endsWith(".sythio.vercel.app") ||
+    origin.startsWith("http://localhost") ||
+    origin.startsWith("exp://");
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": ok ? origin || "https://sythio.app" : "https://sythio.app",
     "Access-Control-Allow-Headers": "authorization, content-type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
 }
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders() });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders(req) });
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action");

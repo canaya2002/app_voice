@@ -19,19 +19,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-function getCorsHeaders(): Record<string, string> {
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const ok =
+    !origin ||
+    origin === "https://sythio.app" ||
+    origin === "https://www.sythio.app" ||
+    origin.endsWith(".sythio.vercel.app") ||
+    origin.startsWith("http://localhost") ||
+    origin.startsWith("exp://");
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": ok ? origin || "https://sythio.app" : "https://sythio.app",
     "Access-Control-Allow-Headers": "authorization, content-type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   };
-}
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
-  });
 }
 
 async function hashKey(key: string): Promise<string> {
@@ -44,12 +45,19 @@ async function hashKey(key: string): Promise<string> {
 }
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders() });
+  const cors = getCorsHeaders(req);
+  const json = (data: unknown, status = 200): Response =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   // ── Auth: API Key ──
   const authHeader = req.headers.get("Authorization") ?? "";
   const apiKey = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!apiKey) return jsonResponse({ error: "API key required" }, 401);
+  if (!apiKey) return json({ error: "API key required" }, 401);
 
   const keyHash = await hashKey(apiKey);
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -61,7 +69,7 @@ serve(async (req: Request) => {
     .single();
 
   if (!keyRecord || keyRecord.revoked_at) {
-    return jsonResponse({ error: "Invalid or revoked API key" }, 401);
+    return json({ error: "Invalid or revoked API key" }, 401);
   }
 
   const userId = keyRecord.user_id as string;
@@ -74,7 +82,7 @@ serve(async (req: Request) => {
     p_max_per_day: 10000,
   });
   if (underQuota === false) {
-    return jsonResponse({ error: "Daily API quota exceeded (10,000 req/day)" }, 429);
+    return json({ error: "Daily API quota exceeded (10,000 req/day)" }, 429);
   }
 
   // Update last_used (fire-and-forget)
@@ -86,7 +94,7 @@ serve(async (req: Request) => {
 
   switch (action) {
     case "list_notes": {
-      if (!permissions.includes("read")) return jsonResponse({ error: "Insufficient permissions" }, 403);
+      if (!permissions.includes("read")) return json({ error: "Insufficient permissions" }, 403);
 
       const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 100);
       const offset = parseInt(url.searchParams.get("offset") || "0");
@@ -99,15 +107,15 @@ serve(async (req: Request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (error) return jsonResponse({ error: error.message }, 500);
-      return jsonResponse({ notes: data, total: count, limit, offset });
+      if (error) return json({ error: error.message }, 500);
+      return json({ notes: data, total: count, limit, offset });
     }
 
     case "get_note": {
-      if (!permissions.includes("read")) return jsonResponse({ error: "Insufficient permissions" }, 403);
+      if (!permissions.includes("read")) return json({ error: "Insufficient permissions" }, 403);
 
       const noteId = url.searchParams.get("id");
-      if (!noteId) return jsonResponse({ error: "Note ID required" }, 400);
+      if (!noteId) return json({ error: "Note ID required" }, 400);
 
       const { data: note, error } = await admin
         .from("notes")
@@ -116,7 +124,7 @@ serve(async (req: Request) => {
         .eq("user_id", userId)
         .single();
 
-      if (error || !note) return jsonResponse({ error: "Note not found" }, 404);
+      if (error || !note) return json({ error: "Note not found" }, 404);
 
       const { data: results } = await admin
         .from("mode_results")
@@ -124,14 +132,14 @@ serve(async (req: Request) => {
         .eq("note_id", noteId)
         .order("created_at", { ascending: true });
 
-      return jsonResponse({ note, mode_results: results ?? [] });
+      return json({ note, mode_results: results ?? [] });
     }
 
     case "get_transcript": {
-      if (!permissions.includes("read")) return jsonResponse({ error: "Insufficient permissions" }, 403);
+      if (!permissions.includes("read")) return json({ error: "Insufficient permissions" }, 403);
 
       const noteId = url.searchParams.get("id");
-      if (!noteId) return jsonResponse({ error: "Note ID required" }, 400);
+      if (!noteId) return json({ error: "Note ID required" }, 400);
 
       const { data: note, error } = await admin
         .from("notes")
@@ -140,15 +148,15 @@ serve(async (req: Request) => {
         .eq("user_id", userId)
         .single();
 
-      if (error || !note) return jsonResponse({ error: "Note not found" }, 404);
-      return jsonResponse(note);
+      if (error || !note) return json({ error: "Note not found" }, 404);
+      return json(note);
     }
 
     case "list_modes": {
-      if (!permissions.includes("read")) return jsonResponse({ error: "Insufficient permissions" }, 403);
+      if (!permissions.includes("read")) return json({ error: "Insufficient permissions" }, 403);
 
       const noteId = url.searchParams.get("id");
-      if (!noteId) return jsonResponse({ error: "Note ID required" }, 400);
+      if (!noteId) return json({ error: "Note ID required" }, 400);
 
       // Verify ownership
       const { data: noteCheck } = await admin
@@ -158,7 +166,7 @@ serve(async (req: Request) => {
         .eq("user_id", userId)
         .single();
 
-      if (!noteCheck) return jsonResponse({ error: "Note not found" }, 404);
+      if (!noteCheck) return json({ error: "Note not found" }, 404);
 
       const { data: results } = await admin
         .from("mode_results")
@@ -166,19 +174,19 @@ serve(async (req: Request) => {
         .eq("note_id", noteId)
         .order("created_at", { ascending: true });
 
-      return jsonResponse({ mode_results: results ?? [] });
+      return json({ mode_results: results ?? [] });
     }
 
     case "convert_mode": {
-      if (req.method !== "POST") return jsonResponse({ error: "POST required" }, 405);
-      if (!permissions.includes("write")) return jsonResponse({ error: "Insufficient permissions (needs 'write')" }, 403);
+      if (req.method !== "POST") return json({ error: "POST required" }, 405);
+      if (!permissions.includes("write")) return json({ error: "Insufficient permissions (needs 'write')" }, 403);
 
       let body: Record<string, unknown>;
-      try { body = await req.json(); } catch { return jsonResponse({ error: "Invalid body" }, 400); }
+      try { body = await req.json(); } catch { return json({ error: "Invalid body" }, 400); }
 
       const noteId = body.note_id as string;
       const targetMode = body.target_mode as string;
-      if (!noteId || !targetMode) return jsonResponse({ error: "note_id and target_mode required" }, 400);
+      if (!noteId || !targetMode) return json({ error: "note_id and target_mode required" }, 400);
 
       // Verify ownership
       const { data: noteCheck } = await admin
@@ -188,11 +196,11 @@ serve(async (req: Request) => {
         .eq("user_id", userId)
         .single();
 
-      if (!noteCheck) return jsonResponse({ error: "Note not found" }, 404);
+      if (!noteCheck) return json({ error: "Note not found" }, 404);
 
       // Delegate to convert-mode function internally
       // For now, return info about how to trigger conversion
-      return jsonResponse({
+      return json({
         message: "Use the Supabase convert-mode function directly for mode conversion.",
         note_id: noteId,
         target_mode: targetMode,
@@ -200,7 +208,7 @@ serve(async (req: Request) => {
     }
 
     default:
-      return jsonResponse({
+      return json({
         error: "Unknown action",
         available_actions: ["list_notes", "get_note", "get_transcript", "list_modes", "convert_mode"],
       }, 400);

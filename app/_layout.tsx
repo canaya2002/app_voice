@@ -77,15 +77,29 @@ export default function RootLayout() {
     useThemeStore.getState().initialize();
 
     // Initialize RevenueCat, identify user, and sync premium status
+    //
+    // Source of truth for plan = profiles.plan in DB (synced by Stripe + RC webhooks).
+    // RC's local cache only knows about App Store purchases — if a user paid via
+    // Stripe (web), RC reports 'free' but DB has 'premium'. Never downgrade locally
+    // based on RC alone; only upgrade if RC reports a HIGHER tier than DB (handles
+    // the case where the user just purchased on iOS and the webhook is still in
+    // flight). Cancellations/expirations come through the webhook → DB → app.
+    const tierRank: Record<string, number> = { free: 0, premium: 1, pro_plus: 2, enterprise: 3 };
+    const reconcilePlanFromRC = (rcTier: 'free' | 'premium' | 'pro_plus') => {
+      const currentPlan = useAuthStore.getState().user?.plan ?? 'free';
+      const rcRank = tierRank[rcTier] ?? 0;
+      const dbRank = tierRank[currentPlan] ?? 0;
+      if (rcRank > dbRank) {
+        useAuthStore.getState().setPlan(rcTier, 'ios');
+      }
+    };
+
     const userId = useAuthStore.getState().session?.user?.id;
     configurePurchases(userId)
       .then(async () => {
         if (userId) await identifyUser(userId);
-        const status = await checkSubscriptionStatus();
-        const currentPlan = useAuthStore.getState().user?.plan;
-        if (status !== currentPlan) {
-          useAuthStore.getState().setPlan(status);
-        }
+        const rcStatus = await checkSubscriptionStatus();
+        reconcilePlanFromRC(rcStatus);
       })
       .catch((err) => {
         if (__DEV__) console.warn("[layout] purchases init error:", err);
@@ -93,9 +107,7 @@ export default function RootLayout() {
 
     // Listen for entitlement changes (renewal, expiry, etc.)
     // tier is one of: 'free' | 'premium' | 'pro_plus'
-    const unsubPurchases = onCustomerInfoUpdated((tier) => {
-      useAuthStore.getState().setPlan(tier);
-    });
+    const unsubPurchases = onCustomerInfoUpdated(reconcilePlanFromRC);
 
     // Register for push notifications (non-blocking, after auth)
     const currentUserId = useAuthStore.getState().session?.user?.id;

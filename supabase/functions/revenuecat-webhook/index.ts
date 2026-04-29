@@ -72,9 +72,27 @@ serve(async (req: Request) => {
     const userId = event.app_user_id;
     const eventType: string = event.type;
 
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // ── Anti-spoof: TEST events skip user check; real events must match a user ──
+    if (eventType !== "TEST") {
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!profile) {
+        // Ack with 200 to avoid RC retry storm, but log for audit.
+        console.warn("[revenuecat-webhook] unknown user_id:", userId, "event:", eventType);
+        return new Response(JSON.stringify({ ok: true, skipped: "unknown_user" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // ── Idempotency check (event.id is RC's unique event UUID) ──
     // Insert the event_id; if conflict, we already processed it — ack with 200.
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     if (event.id) {
       const { error: dupErr } = await admin
         .from("webhook_events")
