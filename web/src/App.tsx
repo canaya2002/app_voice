@@ -1,13 +1,22 @@
-import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
-import { ResetPasswordPage } from './components/ResetPasswordPage';
-import { EnterpriseContactPage } from './components/EnterpriseContactPage';
-import { AdminPage } from './components/AdminPage';
-import SettingsPage from './components/SettingsPage';
 import { logPlatformSession, getSubscriptionDetails } from './lib/subscription';
 import { I18nProvider, useI18n, LANG_LABELS, type Lang } from './i18n';
+import { Turnstile } from './components/Turnstile';
+
+// Heavy / rarely-visited routes — code-split into separate chunks.
+const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
+const EnterpriseContactPage = lazy(() => import('./components/EnterpriseContactPage').then(m => ({ default: m.EnterpriseContactPage })));
+const AdminPage = lazy(() => import('./components/AdminPage').then(m => ({ default: m.AdminPage })));
+const SettingsPage = lazy(() => import('./components/SettingsPage'));
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '';
+
+function RouteFallback() {
+  return <div className="loading" style={{ minHeight: '100vh', alignItems: 'center' }}><div className="spinner" /></div>;
+}
 
 // ── Toast System ────────────────────────────────────────────────────────────
 
@@ -417,12 +426,14 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
   const [error, setError] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const handleToggle = () => {
     setTransitioning(true);
     setTimeout(() => {
       setIsRegister(!isRegister);
       setError('');
+      setCaptchaToken(null);
       setTransitioning(false);
     }, 350);
   };
@@ -431,6 +442,37 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    // Verify captcha before signup (only if site key is configured).
+    if (isRegister && TURNSTILE_SITE_KEY) {
+      if (!captchaToken) {
+        setError(t('auth.captchaRequired') ?? 'Completa la verificación antes de continuar.');
+        setLoading(false);
+        return;
+      }
+      try {
+        const verifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-captcha`;
+        const verifyRes = await fetch(verifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ token: captchaToken }),
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyData.ok) {
+          setError(t('auth.captchaFailed') ?? 'Verificación fallida. Intenta de nuevo.');
+          setCaptchaToken(null);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Network error verifying captcha — fail open to avoid blocking signups
+        // if Cloudflare or our edge function is unreachable.
+      }
+    }
+
     const { error: err } = isRegister
       ? await supabase.auth.signUp({ email, password, options: { data: { display_name: name } } })
       : await supabase.auth.signInWithPassword({ email, password });
@@ -509,7 +551,14 @@ function AuthPage({ onAuth }: { onAuth: () => void }) {
           {isRegister && <input className="auth-input" type="text" placeholder={t('auth.yourName')} value={name} onChange={e => setName(e.target.value)} />}
           <input className="auth-input" type="email" placeholder={t('auth.email')} value={email} onChange={e => setEmail(e.target.value)} required />
           <input className="auth-input" type="password" placeholder={isRegister ? t('auth.passwordMin') : t('auth.password')} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
-          <button className="auth-btn" type="submit" disabled={loading}>
+          {isRegister && TURNSTILE_SITE_KEY && (
+            <Turnstile
+              siteKey={TURNSTILE_SITE_KEY}
+              onToken={setCaptchaToken}
+              onError={() => setCaptchaToken(null)}
+            />
+          )}
+          <button className="auth-btn" type="submit" disabled={loading || (isRegister && !!TURNSTILE_SITE_KEY && !captchaToken)}>
             {loading ? '...' : isRegister ? t('auth.createFree') : t('auth.signIn')}
           </button>
           {!isRegister && (
@@ -1985,44 +2034,46 @@ export default function App() {
     <I18nProvider>
     <ToastProvider>
     <BrowserRouter>
-      <Routes>
-        {/* Public shared note route - no auth required */}
-        <Route path="/shared/:token" element={<SharedNotePage />} />
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          {/* Public shared note route - no auth required */}
+          <Route path="/shared/:token" element={<SharedNotePage />} />
 
-        {/* Password reset (handled outside main app routes — no auth required) */}
-        <Route path="/auth/reset" element={<ResetPasswordPage />} />
+          {/* Password reset (handled outside main app routes — no auth required) */}
+          <Route path="/auth/reset" element={<ResetPasswordPage />} />
 
-        {/* Enterprise contact form (public landing) */}
-        <Route path="/enterprise" element={<EnterpriseContactPage />} />
+          {/* Enterprise contact form (public landing) */}
+          <Route path="/enterprise" element={<EnterpriseContactPage />} />
 
-        {/* Admin dashboard — requires profiles.is_admin = true (checked inside) */}
-        <Route path="/admin" element={<AdminPage />} />
+          {/* Admin dashboard — requires profiles.is_admin = true (checked inside) */}
+          <Route path="/admin" element={<AdminPage />} />
 
-        {/* All other routes */}
-        <Route path="*" element={
-          session ? (
-            <div className="app-layout">
-              <Sidebar email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} folders={sidebarFolders} />
-              <main className="app-main">
-                {platformBanner && (
-                  <PlatformBannerUI platform={platformBanner} onDismiss={() => setPlatformBanner(null)} />
-                )}
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/note/:id" element={<NoteDetail />} />
-                  <Route path="/trash" element={<TrashPage />} />
-                  <Route path="/workspaces" element={<WorkspacesPage />} />
-                  <Route path="/integrations" element={<IntegrationsPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </main>
-            </div>
-          ) : (
-            <AuthPage onAuth={() => {}} />
-          )
-        } />
-      </Routes>
+          {/* All other routes */}
+          <Route path="*" element={
+            session ? (
+              <div className="app-layout">
+                <Sidebar email={session.user.email ?? ''} onLogout={() => { setPlatformBanner(null); supabase.auth.signOut(); }} folders={sidebarFolders} />
+                <main className="app-main">
+                  {platformBanner && (
+                    <PlatformBannerUI platform={platformBanner} onDismiss={() => setPlatformBanner(null)} />
+                  )}
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/note/:id" element={<NoteDetail />} />
+                    <Route path="/trash" element={<TrashPage />} />
+                    <Route path="/workspaces" element={<WorkspacesPage />} />
+                    <Route path="/integrations" element={<IntegrationsPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </main>
+              </div>
+            ) : (
+              <AuthPage onAuth={() => {}} />
+            )
+          } />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
     </ToastProvider>
     </I18nProvider>
