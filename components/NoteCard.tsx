@@ -130,9 +130,13 @@ const BAR_COUNT = 12;
 // Component
 // ---------------------------------------------------------------------------
 
+// Cap stagger so cards far down the list don't wait seconds to fade in.
+const MAX_STAGGER_INDEX = 8;
+
 export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCardProps) {
   // -- Swipe to delete (RN Animated for PanResponder compat) -----------------
   const translateX = useRef(new RNAnimated.Value(0)).current;
+  const staggerIndex = Math.min(index, MAX_STAGGER_INDEX);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -215,7 +219,7 @@ export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCar
 
   // -- Render ----------------------------------------------------------------
   return (
-    <Animated.View entering={cardEntry(index)} style={styles.outerWrapper}>
+    <Animated.View entering={cardEntry(staggerIndex)} style={styles.outerWrapper}>
       {/* Delete button revealed behind the card */}
       <View style={styles.deleteContainer}>
         <TouchableOpacity
@@ -297,24 +301,24 @@ export default function NoteCard({ note, index, onDelete, onLongPress }: NoteCar
             {/* Badges with staggered entry */}
             <View style={styles.badgeRow}>
               {note.primary_mode && (
-                <Animated.View entering={FadeIn.delay(index * 100 + 160)} style={styles.badgeMode}>
+                <Animated.View entering={FadeIn.delay(staggerIndex * 100 + 160)} style={styles.badgeMode}>
                   <Ionicons name={getModeConfig(note.primary_mode).icon as keyof typeof Ionicons.glyphMap} size={11} color={COLORS.primaryLight} />
                   <Text style={styles.badgeModeText}>{getModeConfig(note.primary_mode).label}</Text>
                 </Animated.View>
               )}
               {note.template && note.template !== 'quick_idea' && (
-                <Animated.View entering={FadeIn.delay(index * 100 + 200)} style={styles.badgeTemplate}>
+                <Animated.View entering={FadeIn.delay(staggerIndex * 100 + 200)} style={styles.badgeTemplate}>
                   <Text style={styles.badgeTemplateText}>{note.template}</Text>
                 </Animated.View>
               )}
               {note.is_conversation && note.speakers_detected > 1 && (
-                <Animated.View entering={FadeIn.delay(index * 100 + 280)} style={styles.badgeSpeakers}>
+                <Animated.View entering={FadeIn.delay(staggerIndex * 100 + 280)} style={styles.badgeSpeakers}>
                   <Ionicons name="people-outline" size={12} color="#8A8F98" />
                   <Text style={styles.badgeSpeakersText}>{note.speakers_detected} hablantes</Text>
                 </Animated.View>
               )}
               {showTasksChip && (
-                <Animated.View entering={FadeIn.delay(index * 100 + 360)} style={styles.badgeTasks}>
+                <Animated.View entering={FadeIn.delay(staggerIndex * 100 + 360)} style={styles.badgeTasks}>
                   <Ionicons name="checkbox-outline" size={12} color="#8A8F98" />
                   <Text style={styles.badgeTasksText}>
                     {taskCount} {taskCount === 1 ? 'tarea' : 'tareas'}

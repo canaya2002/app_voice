@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +35,21 @@ function generateWaveformBars(seed: string, count: number): number[] {
   return bars;
 }
 
+// Each bar only re-renders when its filled state flips — avoids 40 re-renders/sec on progress.
+const WaveformBar = React.memo(function WaveformBar({ height, filled }: { height: number; filled: boolean }) {
+  return (
+    <View
+      style={[
+        styles.waveformBar,
+        {
+          height: Math.max(4, height * 32),
+          backgroundColor: filled ? COLORS.primary : COLORS.border,
+        },
+      ]}
+    />
+  );
+});
+
 export default function AudioPlayer({ uri, duration, bookmarks = [], onTimeUpdate, onSeekToTime, onAddBookmark }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -42,7 +57,7 @@ export default function AudioPlayer({ uri, duration, bookmarks = [], onTimeUpdat
   const [speedIndex, setSpeedIndex] = useState(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const playAnim = useRef(new Animated.Value(1)).current;
-  const waveformBars = useRef(generateWaveformBars(uri, 40)).current;
+  const waveformBars = useMemo(() => generateWaveformBars(uri, 40), [uri]);
 
   // Expose seekTo function to parent via ref — auto-loads audio if needed
   const seekTo = useCallback(async (timeSec: number) => {
@@ -192,21 +207,13 @@ export default function AudioPlayer({ uri, duration, bookmarks = [], onTimeUpdat
   return (
     <View style={styles.container}>
       <View style={styles.waveformRow}>
-        {waveformBars.map((height, i) => {
-          const isFilled = i / waveformBars.length <= progress;
-          return (
-            <View
-              key={i}
-              style={[
-                styles.waveformBar,
-                {
-                  height: Math.max(4, height * 32),
-                  backgroundColor: isFilled ? COLORS.primary : COLORS.border,
-                },
-              ]}
-            />
-          );
-        })}
+        {waveformBars.map((height, i) => (
+          <WaveformBar
+            key={i}
+            height={height}
+            filled={i / waveformBars.length <= progress}
+          />
+        ))}
       </View>
 
       {/* Bookmark markers on waveform */}

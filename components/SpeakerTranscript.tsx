@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -76,28 +76,44 @@ interface SegmentBubbleProps {
   highlighted: boolean;
   isActive: boolean;
   searchQuery?: string;
+  skipAnimation?: boolean;
   onRenameSpeaker?: () => void;
   onEditSegment?: (index: number, newText: string) => void;
   onToggleHighlight?: (index: number) => void;
   onSegmentPress?: (segment: TranscriptSegment) => void;
 }
 
-function HighlightedText({ text, query, color: textColor }: { text: string; query?: string; color: string }) {
-  if (!query || !query.trim()) {
+const ANIMATION_SEGMENT_THRESHOLD = 50;
+
+const HighlightedText = React.memo(function HighlightedText({
+  text,
+  query,
+  color: textColor,
+}: {
+  text: string;
+  query?: string;
+  color: string;
+}) {
+  const parts = useMemo(() => {
+    if (!query || !query.trim()) return null;
+    const result: { text: string; match: boolean }[] = [];
+    const lower = text.toLowerCase();
+    const q = query.toLowerCase();
+    let lastIndex = 0;
+    let pos = lower.indexOf(q, lastIndex);
+    while (pos !== -1) {
+      if (pos > lastIndex) result.push({ text: text.slice(lastIndex, pos), match: false });
+      result.push({ text: text.slice(pos, pos + q.length), match: true });
+      lastIndex = pos + q.length;
+      pos = lower.indexOf(q, lastIndex);
+    }
+    if (lastIndex < text.length) result.push({ text: text.slice(lastIndex), match: false });
+    return result;
+  }, [text, query]);
+
+  if (!parts) {
     return <Text style={[styles.bubbleText, { color: textColor }]}>{text}</Text>;
   }
-  const parts: { text: string; match: boolean }[] = [];
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-  let lastIndex = 0;
-  let pos = lower.indexOf(q, lastIndex);
-  while (pos !== -1) {
-    if (pos > lastIndex) parts.push({ text: text.slice(lastIndex, pos), match: false });
-    parts.push({ text: text.slice(pos, pos + q.length), match: true });
-    lastIndex = pos + q.length;
-    pos = lower.indexOf(q, lastIndex);
-  }
-  if (lastIndex < text.length) parts.push({ text: text.slice(lastIndex), match: false });
   return (
     <Text style={[styles.bubbleText, { color: textColor }]}>
       {parts.map((p, i) =>
@@ -109,7 +125,7 @@ function HighlightedText({ text, query, color: textColor }: { text: string; quer
       )}
     </Text>
   );
-}
+});
 
 function SegmentBubble({
   segment,
@@ -119,23 +135,25 @@ function SegmentBubble({
   highlighted,
   isActive,
   searchQuery,
+  skipAnimation,
   onRenameSpeaker,
   onEditSegment,
   onToggleHighlight,
   onSegmentPress,
 }: SegmentBubbleProps) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(skipAnimation ? 1 : 0)).current;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(segment.text);
 
   useEffect(() => {
+    if (skipAnimation) return;
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 300,
       delay: index * 50,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim, index]);
+  }, [fadeAnim, index, skipAnimation]);
 
   const speaker = findSpeaker(speakers, segment.speaker);
   const color = getSpeakerColor(speaker.color);
@@ -283,6 +301,7 @@ function SpeakerTranscriptBase({
   onSegmentPress,
 }: SpeakerTranscriptProps) {
   const narratorMode = isNarratorMode(speakers);
+  const skipAnimation = segments.length > ANIMATION_SEGMENT_THRESHOLD;
 
   if (segments.length === 0) {
     return (
@@ -327,6 +346,7 @@ function SpeakerTranscriptBase({
             highlighted={highlights.includes(index)}
             isActive={activeSegmentIndex === index}
             searchQuery={searchQuery}
+            skipAnimation={skipAnimation}
             onRenameSpeaker={onRenameSpeaker}
             onEditSegment={onEditSegment}
             onToggleHighlight={onToggleHighlight}

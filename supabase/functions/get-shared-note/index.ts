@@ -38,7 +38,8 @@ function getCorsHeaders(req: Request): Record<string, string> {
     || origin.startsWith("http://localhost")
     || origin.startsWith("exp://");
   return {
-    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.app",
+    "Access-Control-Allow-Origin": ok ? (origin || "https://sythio.app") : "https://sythio.app",
+    "Vary": "Origin",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
 }

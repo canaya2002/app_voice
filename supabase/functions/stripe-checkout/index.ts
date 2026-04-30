@@ -41,8 +41,9 @@ function corsHeaders(req: Request): Record<string, string> {
     || origin.endsWith(".sythio.vercel.app")
     || origin.startsWith("http://localhost");
   return {
-    "Access-Control-Allow-Origin": ok ? (origin || "*") : "https://sythio.app",
+    "Access-Control-Allow-Origin": ok ? (origin || "https://sythio.app") : "https://sythio.app",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
     "Content-Type": "application/json",
   };
 }

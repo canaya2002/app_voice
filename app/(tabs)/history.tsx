@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -181,38 +181,43 @@ export default function HistoryScreen() {
     setSelectedIds(new Set());
   }, []);
 
-  const filteredNotes = notes.filter((note) => {
-    // Folder filter
-    if (selectedFolder && note.folder_id !== selectedFolder) return false;
-    // Time filter
-    if (!matchesTimeFilter(note.created_at, timeFilter)) return false;
-    // Text search with fuzzy matching (split query into words, all must match somewhere)
-    if (search.trim()) {
-      const words = search.toLowerCase().split(/\s+/).filter(Boolean);
-      const haystack = [
-        note.title, note.summary, note.transcript, note.clean_text,
-        ...note.key_points, ...note.tasks,
-        note.template ?? '', note.primary_mode,
-        ...(note.speakers?.map(s => s.custom_name ?? s.default_name) ?? []),
-        ...(note.tags ?? []),
-      ].join(' ').toLowerCase();
-      const matches = words.every((w) => haystack.includes(w));
-      if (!matches) return false;
-    }
-    // Category filter
-    if (filter === 'all') return true;
-    if (filter === 'meeting') return note.template === 'meeting' || note.template === 'client';
-    if (filter === 'tasks') return note.primary_mode === 'tasks' || note.template === 'task';
-    if (filter === 'ideas') return note.primary_mode === 'ideas' || note.template === 'brainstorm' || note.template === 'quick_idea';
-    if (filter === 'study') return note.primary_mode === 'study' || note.template === 'class';
-    if (filter === 'conversations') return note.is_conversation && note.speakers_detected > 1;
-    return true;
-  }).sort((a, b) => {
-    // Pinned notes always at top
-    if (a.is_pinned && !b.is_pinned) return -1;
-    if (!a.is_pinned && b.is_pinned) return 1;
-    return 0; // preserve existing order (created_at desc) within each group
-  });
+  const filteredNotes = useMemo(() => {
+    const searchWords = search.trim()
+      ? search.toLowerCase().split(/\s+/).filter(Boolean)
+      : null;
+
+    return notes.filter((note) => {
+      // Folder filter
+      if (selectedFolder && note.folder_id !== selectedFolder) return false;
+      // Time filter
+      if (!matchesTimeFilter(note.created_at, timeFilter)) return false;
+      // Text search with fuzzy matching (split query into words, all must match somewhere)
+      if (searchWords) {
+        const haystack = [
+          note.title, note.summary, note.transcript, note.clean_text,
+          ...note.key_points, ...note.tasks,
+          note.template ?? '', note.primary_mode,
+          ...(note.speakers?.map(s => s.custom_name ?? s.default_name) ?? []),
+          ...(note.tags ?? []),
+        ].join(' ').toLowerCase();
+        const matches = searchWords.every((w) => haystack.includes(w));
+        if (!matches) return false;
+      }
+      // Category filter
+      if (filter === 'all') return true;
+      if (filter === 'meeting') return note.template === 'meeting' || note.template === 'client';
+      if (filter === 'tasks') return note.primary_mode === 'tasks' || note.template === 'task';
+      if (filter === 'ideas') return note.primary_mode === 'ideas' || note.template === 'brainstorm' || note.template === 'quick_idea';
+      if (filter === 'study') return note.primary_mode === 'study' || note.template === 'class';
+      if (filter === 'conversations') return note.is_conversation && note.speakers_detected > 1;
+      return true;
+    }).sort((a, b) => {
+      // Pinned notes always at top
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      return 0; // preserve existing order (created_at desc) within each group
+    });
+  }, [notes, selectedFolder, timeFilter, search, filter]);
 
   const renderItem = ({ item, index }: { item: Note; index: number }) => {
     if (selectMode) {
@@ -250,7 +255,7 @@ export default function HistoryScreen() {
       <Animated.View entering={FadeInDown.delay(50).duration(500)} style={styles.header}>
         {selectMode ? (
           <>
-            <AnimatedPressable onPress={handleExitSelectMode}>
+            <AnimatedPressable onPress={handleExitSelectMode} accessibilityLabel="Salir del modo selección">
               <Ionicons name="close" size={22} color={COLORS.textPrimary} />
             </AnimatedPressable>
             <Text style={styles.title}>{selectedIds.size} seleccionadas</Text>
@@ -259,6 +264,7 @@ export default function HistoryScreen() {
                 onPress={handleBatchExport}
                 disabled={selectedIds.size === 0 || batchExporting}
                 style={[styles.batchBtn, { backgroundColor: COLORS.primary }]}
+                accessibilityLabel="Exportar notas seleccionadas"
               >
                 {batchExporting ? (
                   <ActivityIndicator size="small" color="#FFF" />
@@ -270,6 +276,7 @@ export default function HistoryScreen() {
                 onPress={handleBatchDelete}
                 disabled={selectedIds.size === 0}
                 style={[styles.batchBtn, { backgroundColor: COLORS.error }]}
+                accessibilityLabel="Eliminar notas seleccionadas"
               >
                 <Ionicons name="trash-outline" size={16} color="#FFF" />
               </AnimatedPressable>
@@ -280,10 +287,14 @@ export default function HistoryScreen() {
             <Text style={styles.title}>Historial</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Text style={styles.count}>{notes.length} notas</Text>
-              <AnimatedPressable onPress={() => { hapticButtonPress(); setSelectMode(true); }} style={styles.trashBtn}>
+              <AnimatedPressable
+                onPress={() => { hapticButtonPress(); setSelectMode(true); }}
+                style={styles.trashBtn}
+                accessibilityLabel="Activar modo selección múltiple"
+              >
                 <Ionicons name="checkbox-outline" size={18} color={COLORS.textMuted} />
               </AnimatedPressable>
-              <AnimatedPressable onPress={handleOpenTrash} style={styles.trashBtn}>
+              <AnimatedPressable onPress={handleOpenTrash} style={styles.trashBtn} accessibilityLabel="Abrir papelera">
                 <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
               </AnimatedPressable>
             </View>
@@ -312,7 +323,11 @@ export default function HistoryScreen() {
                 <Text style={[styles.folderChipText, selectedFolder === f.id && { color: '#FFF' }]}>{f.name}</Text>
               </AnimatedPressable>
             ))}
-            <AnimatedPressable onPress={() => setShowNewFolder(true)} style={styles.folderAddBtn}>
+            <AnimatedPressable
+              onPress={() => setShowNewFolder(true)}
+              style={styles.folderAddBtn}
+              accessibilityLabel="Crear nueva carpeta"
+            >
               <Ionicons name="add" size={16} color={COLORS.textMuted} />
             </AnimatedPressable>
           </ScrollView>

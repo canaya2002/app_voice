@@ -2,13 +2,13 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/lib/constants';
@@ -141,7 +141,13 @@ export default function NoteImages({ noteId, images }: NoteImagesProps) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
           {images.map((path, idx) => (
             <TouchableOpacity key={idx} onLongPress={() => handleRemoveImage(path)} activeOpacity={0.8}>
-              <Image source={{ uri: getPublicUrl(path) }} style={styles.thumbnail} />
+              <Image
+                source={{ uri: getPublicUrl(path) }}
+                style={styles.thumbnail}
+                cachePolicy="memory-disk"
+                contentFit="cover"
+                transition={150}
+              />
             </TouchableOpacity>
           ))}
         </ScrollView>

@@ -50,12 +50,14 @@ serve(async (req: Request) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // ── Verify webhook secret ──────────────────────────────────────────
-  if (WEBHOOK_SECRET) {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (auth !== `Bearer ${WEBHOOK_SECRET}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+  // ── Verify webhook secret (fail-closed: missing env var = reject) ──
+  if (!WEBHOOK_SECRET) {
+    console.error("[revenuecat-webhook] REVENUECAT_WEBHOOK_SECRET not configured — rejecting");
+    return new Response("Server misconfigured", { status: 500 });
+  }
+  const auth = req.headers.get("Authorization") ?? "";
+  if (auth !== `Bearer ${WEBHOOK_SECRET}`) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   try {
