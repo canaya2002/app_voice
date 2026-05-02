@@ -1,438 +1,199 @@
 # Sythio — Pasos para Lanzar a Producción
 
-**Última actualización:** 2026-04-29 (RevenueCat 1.2 al 90% — solo Sandbox Tester pendiente)
+**Última actualización:** 2026-05-02 (build #2 en TestFlight — esperando processing/internal review de Apple)
 **Audiencia:** Carlos (founder/dev)
-**Objetivo:** TestFlight → App Store iOS (Android se hará después, sin dev account aún)
+**Objetivo:** Internal smoke test → metadata final → 1 click "Submit for Review" → App Store
 
 ---
 
-## 🚦 LO ÚNICO QUE FALTA PARA LANZAR
+## 🚦 EN QUÉ PUNTO ESTAMOS HOY
 
-> ⚡ Lee esto primero. Es el "índice" de lo pendiente para llegar a App Store.
-
-| # | Tarea | Status | Quién | Tiempo |
-|---|---|---|---|---|
-| **1** | **Fase 9 — Crear Sandbox Tester en ASC** | 🔴 Pendiente | Carlos | 5 min |
-| **2** | **Production Build → TestFlight** | 🔴 Pendiente | Carlos (eas) | 30 min build + 24h review |
-| **3** | **Submit a App Store** | 🔴 Pendiente | Carlos | 1-2 días Apple review |
-| **4** | **Android (Google Play)** | 🟢 Backlog | Carlos | después del lanzamiento iOS |
-| **5** | **Follow-ups post-launch** | 🟢 Backlog | Carlos | post-launch |
-
-**Comando para arrancar #2 cuando #1 esté listo:**
-```bash
-eas build --profile production --platform ios
+```
+[✅] Build EAS #2 finished           commit 0d3bdb1c
+[✅] Subido a TestFlight            submission a4ed53c1
+[⏳] Apple Processing                ~5-10 min → email "processing complete"
+[⏳] Apple Internal Review           24-48h → email "ready to test"
+[🛑 PAUSA AQUÍ]                      libre para hacer cambios cuantas veces quieras
+[ ] Smoke test en iPhone real
+[ ] Llenar lo que falta de metadata 1.0.0 en ASC
+[ ] 5 capturas (1290×2796)
+[ ] Submit for Review                ← NO TOCAR sin doble check Carlos + Claude
+[ ] Apple Review (1-2 días)
+[ ] 🚀 Release (manual desde ASC)
 ```
 
 ---
 
-## 📊 Estado actual completo
+## 🟢 Lo único que YO (Carlos) tengo que hacer ahora
 
-### ✅ Hecho — backend + web 100% en producción
+### Mientras Apple procesa la build (1-2 días):
 
-| # | Bloque | Notas clave |
+1. **Configurar Sandbox Account en mi iPhone** (2 min, OBLIGATORIO antes del smoke test)
+   - iPhone → Settings → App Store → scroll a Sandbox Account → Sign In
+   - Email: `canaya917+sandbox@gmail.com` / Password: la del 1Password
+   - ⚠️ Sin esto, las compras Sandbox cobran de verdad con tu Apple ID real
+
+2. **Añadirme como Internal Tester en TestFlight** (1 min, ya hecho?)
+   - https://appstoreconnect.apple.com/apps/6764143516/testflight/ios
+   - Internal Testing → App Store Connect Users → + → marcar mi cuenta
+
+3. **Llenar metadata text de 1.0.0 en ASC** (~30 min, copy-paste desde `docs/APP_STORE_METADATA.md`)
+   - Promotional Text, Description, Keywords
+   - Support URL, Marketing URL
+   - Copyright
+   - App Review Information (datos del demo account)
+   - Version Release: marcar "**Manually release this version**"
+   - ⚠️ NO seleccionar la build todavía (sigue en Processing)
+   - ⚠️ NO marcar "Add for Review"
+
+4. **Decidir si hago más cambios al código antes del smoke test**
+   - Si sí → editar → `eas build` → `eas submit` (reemplaza la #2 en TestFlight)
+   - Si no → esperar email "Ready to Test" y arrancar smoke test directo
+
+### Cuando llegue email "Build is ready to test" (24-48h):
+
+5. **Smoke test obligatorio en iPhone con TestFlight**
+   - [ ] Login con Apple
+   - [ ] 2FA enrollment + verify + disable
+   - [ ] Grabar audio 30s → procesa → ve resultado
+   - [ ] Cambiar de modo en la nota
+   - [ ] Exportar PDF + Excel
+   - [ ] Compartir nota → link público abre en browser
+   - [ ] **Comprar Premium en Sandbox** (con Sandbox Tester) → `profiles.plan = premium` en Supabase
+   - [ ] **Comprar Pro+ en Sandbox** → `profiles.plan = pro_plus`
+   - [ ] Restaurar compras
+   - [ ] Límite free (2 notas/día) bloquea la 3ª
+
+6. **Si encuentra bugs** → fix → nueva build → re-submit a TestFlight → re-test
+
+7. **Si todo OK** → tomar las 5 capturas (1290×2796 px, guía en `docs/APP_STORE_METADATA.md` sección "📷 Guía de Capturas")
+
+8. **Subir capturas a ASC** → completa la sección "App Previews and Screenshots"
+
+9. **Verificación final con Claude antes del botón "Add for Review"**
+
+10. **Click "Add for Review"** (con doble check) → Apple review (1-2 días)
+
+11. **Cuando aprueben** → ASC → "Release this version" → 🚀 live en App Store
+
+---
+
+## ✅ Hecho hasta hoy (2026-05-02)
+
+### Backend + Web — 100% en producción
+
+| Bloque | Notas |
+|---|---|
+| Stripe | Premium ($14.99/$149.99) + Pro+ ($29.99/$299.99) — `provider` constraint allows `stripe`/`revenuecat` |
+| Apple Developer | Sign In with Apple, AASA file, JWS |
+| Supabase Auth | Apple + Google + email/password + 2FA TOTP |
+| Supabase Secrets | Stripe, Anthropic, Groq, RevenueCat, Resend |
+| Migraciones SQL | 23/23 (tier restructure + security lockdown + atomic increments + admin flag + cron via vault + **distributed IP rate limiting** + **subscription status alignment**) |
+| Edge Functions | 17 deployadas con CORS hardening + rate limiter distribuido (DB-backed) |
+| Vercel | sythio.app live con bundle code-split (575 KB → 290 KB main + chunks lazy) |
+| DNS | sythio.app + www.sythio.app con SSL |
+| Forgot password | Mobile + web flow funcional |
+| Enterprise contact | `/enterprise` → form → DB + Resend email |
+| Admin Dashboard | `/admin` con UI premium para onboard enterprise |
+| Security lockdown | Trigger bloquea UPDATE de plan + counters |
+| Storage cleanup | pg_cron daily 04:00 UTC vía edge function |
+| RC webhook | Fail-closed si secret no está, idempotency check |
+| Web npm audit | 0 vulnerabilities |
+| Web captcha | Turnstile widget integrado en signup (dormido hasta que sete keys) |
+
+### iOS — completado en esta semana
+
+| Bloque | Status |
+|---|---|
+| RevenueCat productos en ASC + entitlements + offerings + webhook | ✅ |
+| EAS credentials (cert + provisioning + push key + ASC API key) | ✅ |
+| App Store Connect — App Information completa | ✅ |
+| App Store Connect — Privacy Nutrition Label | ✅ |
+| App Store Connect — Pricing and Availability (Free, all territories) | ✅ |
+| App Store Connect — Encryption Compliance (Note 4 exemption) | ✅ |
+| Sandbox Tester en ASC | ✅ `canaya917+sandbox@gmail.com` |
+| Demo account `apple-review@sythio.app` con Premium 5 años | ✅ Supabase auto-confirm |
+| Production build #2 (commit `0d3bdb1c`) | ✅ finished 2026-05-02 |
+| Subida a TestFlight | ✅ submission `a4ed53c1` |
+
+### Code quality (esta sesión 2026-05-02)
+
+| Fix | Lugar |
+|---|---|
+| Splash colgada si AsyncStorage falla | `app/_layout.tsx` |
+| Audio player atorado si signed URL falla | `app/note/[id].tsx` |
+| Skeleton infinito si fetch inicial rejecta | `app/(tabs)/history.tsx` |
+| Pull-to-refresh atorado en history y tasks | mismo |
+| Welcome screen vacía si language read falla | `app/(auth)/welcome.tsx` |
+| `useState` mal usado para side effect | `app/(tabs)/menu.tsx` |
+| A11y enriquecido | AnimatedPressable, ModeSelector, AudioRecorder, TemplateSelector, AIChatModal, history.tsx |
+
+### Docs entregados
+
+- `docs/APP_STORE_METADATA.md` — copy completo para ASC (subtitle, descripción, keywords, privacy nutrition, app review info, TestFlight what to test, guía de 5 capturas)
+- `docs/SYTHIO.md` — overview del proyecto
+- `docs/billing-architecture.md` — arquitectura RevenueCat + Stripe
+- `docs/deploy-guide.md` — pasos de deployment
+- `docs/ENTERPRISE_RUNBOOK.md` — runbook B2B
+- `docs/PASOS_RESTANTES.md` — este archivo
+
+---
+
+## 🟡 Pendientes opcionales (NO bloquean lanzamiento iOS)
+
+### Android (trabado por verificación de identidad de Google)
+
+| # | Tarea | Quién |
 |---|---|---|
-| 1.1 | Stripe | Premium ($14.99/$149.99) + **Pro+ ($29.99/$299.99)** — Enterprise renombrado a Pro+, nuevo Enterprise = custom B2B |
-| 1.3 | Apple Developer | Sign In with Apple, AASA file desplegado |
-| 1.4 | Supabase Auth (Apple) | Provider via JWS |
-| 2.1 | Supabase Secrets | 13 secrets (Stripe x8, Anthropic, Groq, RevenueCat, Enterprise inquiry config) |
-| 2.2 | Migraciones SQL | 21/21 sincronizadas (tier restructure + security lockdown + atomic increments + admin flag + cron via vault) |
-| 2.3 | Edge Functions | 17 deployadas (incluyendo: enterprise-inquiry, storage-cleanup, verify-captcha, admin-onboard-enterprise, admin-list-workspaces) |
-| 4.1 | Vercel deploy | sythio.app live |
-| 4.2 | DNS | sythio.app + www.sythio.app con SSL |
-| — | **Tier restructure** | free / premium / **pro_plus** / **enterprise** (custom B2B) |
-| — | **Forgot password** | Mobile + web → email con link a `/auth/reset` |
-| — | **Enterprise contact** | `/enterprise` page → form → DB + email vía Resend (sythio.app verificado) |
-| — | **Admin Dashboard** | `/admin` con UI premium — onboard enterprise en 1 click |
-| — | **Security lockdown** | Trigger bloquea UPDATE de plan + counters; RPCs con auth check |
-| — | **Storage cleanup** | pg_cron diario 04:00 UTC, borra audio de papelera 7+ días vía edge function (vault) |
-| — | **Bug fixes pre-launch** | DAILY_LIMITS para todos los tiers, race conditions, anti-spoof, RLS recursion fix |
-| — | **Resend** | API key configurada con sythio.app (dominio verificado, emails funcionan) |
-| — | **Secret rotation** | Token leakeado rotado via Supabase Vault (incident GitGuardian resuelto) |
+| A.2.1 | Crear app en Google Play Console | Carlos (cuando Google destrabe identidad) |
+| A.2.2 | Generar Google Service Account JSON | Carlos |
+| A.2.3 | Crear 4 SKUs en Play Console | Carlos |
+| A.2.4–8 | Configurar RevenueCat Android (app + service account + entitlements + offering + API key) | Carlos |
+| C.1 | `eas build --profile production --platform android` | Carlos |
+| C.2 | `eas submit --profile production --platform android --track internal` | Carlos |
+| E.2 | Llenar metadata Google Play Console | Carlos |
 
-### ✅ Hecho — RevenueCat (Fases 4-8) — 2026-04-29
+> Config Android ya está en `eas.json` y `app.json`. `lib/purchases.ts` selecciona key por plataforma. Cuando Google destrabe → solo añadir el `EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID` a `eas.json` y proceder.
 
-| Fase | Bloque | Status |
-|---|---|---|
-| 1.2.4 | **Conectar RC ↔ ASC API** (In-App Purchase Key + Team API Key) | ✅ Hecho — productos creados manualmente como workaround |
-| 1.2.5 | **Entitlements** `premium` y `pro_plus` con productos atados | ✅ Hecho |
-| 1.2.6 | **Offerings** Premium (Current) y Pro+ con `$rc_monthly`/`$rc_annual` | ✅ Hecho |
-| 1.2.7 | **Webhook** RC → Supabase | ✅ Test event respondió 200 `{"ok":true,"test":true}` |
-| 1.2.8 | **API Key iOS** `appl_YQBZEnATAggxJJLdlXjZDoiaYlC` | ✅ Verificada — coincide con `eas.json` |
+### Misc post-launch (cualquier momento)
 
-### 🔴 Pendiente — para lanzar iOS
-
-| # | Bloque | Status | Tiempo |
-|---|---|---|---|
-| **1.2.9** | **RevenueCat — Sandbox Tester en ASC** | 🔴 Pendiente | 5 min |
-| 3.1 | EAS Build setup | ✅ Credenciales configuradas | 0 min (listo) |
-| 3.2 | Production build → TestFlight | ⏳ Pendiente Fase 9 | 30 min build + 24h review |
-| 3.3 | Submit a App Store | ⏳ Pendiente | 1-2 días review Apple |
+- **Activar Turnstile** — Cloudflare site key + Vercel env var `VITE_TURNSTILE_SITE_KEY` + `supabase secrets set TURNSTILE_SECRET_KEY=...`
+- **Reconectar GitHub → Vercel auto-deploy** (actualmente roto, deploys son manuales con `cd web && vercel --prod`)
+- **Verificar `RESEND_API_KEY` en Supabase secrets** — `supabase secrets list` (no solo en `.env`)
 
 ---
 
-## 🎯 ACCIÓN INMEDIATA — Fase 9 (Sandbox Tester) — 5 min
+## ⚠️ Recordatorios críticos con fecha
 
-Cuando estés listo:
-
-1. https://appstoreconnect.apple.com → **Users and Access** → pestaña **Sandbox** → **Testers** → **"+"**
-2. Llenar:
-   - **First Name:** `Sythio`
-   - **Last Name:** `Tester`
-   - **Email:** `canaya917+sandbox@gmail.com` (Gmail acepta `+`, lo redirige a tu cuenta)
-   - **Password:** una segura, **anótala** (la usarás en el iPhone para sandbox)
-   - **Country:** **United States** ⚠️ obligatorio (sandbox solo funciona estable en US)
-   - Date of birth + secret question: cualquiera
-3. **Save / Invite**
-4. **Anota credenciales** en 1Password / notas seguras
-
-⚠️ En iPhone después: Settings → App Store → Sandbox Account → Sign In con esas credenciales.
-
----
-
-## 🚀 Después de Fase 9 — Production Build → TestFlight
-
-```bash
-# Sube versión y build number en app.json antes:
-#   "version": "1.0.0", "ios": { "buildNumber": "1" }
-
-eas build --profile production --platform ios   # ~20-30 min
-eas submit --profile production --platform ios  # pide app-specific password de Apple ID
-```
-
-Después esperar TestFlight review (~24h Apple internal).
-
-### Smoke test obligatorio en TestFlight (sandbox)
-
-- [ ] Login con Apple
-- [ ] 2FA enrollment + verify + disable
-- [ ] Grabar audio 30s → procesa → ve resultado
-- [ ] Cambiar de modo en la nota
-- [ ] Exportar PDF + Excel
-- [ ] Compartir nota → link público abre en browser
-- [ ] **Comprar Premium en Sandbox** (con Sandbox Tester) → `profiles.plan = premium` en Supabase
-- [ ] **Comprar Pro+ en Sandbox** → `profiles.plan = pro_plus`
-- [ ] Restaurar compras
-- [ ] Límite free (2 notas/día) bloquea la 3ª
-
-### 🟡 Follow-up post-launch (NO bloquean)
-- **Setear `RESEND_API_KEY`** en Supabase secrets para que enterprise-inquiry envíe emails (sin esto, solo guarda en DB)
-- Reconectar GitHub → Vercel auto-deploy
-- **Android**: cuando tengas Google Play Console ($25 one-time) — repetir flujo similar con Google Play Console + offering `default_android` en RC
-- Captcha en signup para limitar abuso
-- Ver `docs/AUDITORIA_2_Y_3.md` para backlog completo de mejoras de seguridad
-
-#### Performance / UI follow-ups (identificados en audit 2026-04-29)
-- `SpeakerTranscript`: animación `Animated.timing` por segmento con `delay: index * 50` bloquea JS thread con transcripts largos (>50 segments). Migrar a Reanimated `runOnUI` o desactivar animaciones cuando segments.length > 50.
-- `HighlightedText`: `useMemo` para search highlight parts (re-renderiza todo en cada keystroke).
-- `NoteCard`: badges con `delay: index * 100` × N items en lista — limitar.
-- `tasks.tsx` FlatList sin `keyExtractor` explícito (línea ~449).
-- `history.tsx`: `useMemo` en `matchesTimeFilter` + fuzzy search.
-- `AudioPlayer`: memoizar waveform bars (40 bars renderizadas siempre).
-- A11y: agregar `accessibilityLabel` en íconos solos (folder bar, channel picker).
-- Image cache: `Image.prefetch()` en home + `cachePolicy="memory-disk"`.
-
-#### Security / sync follow-ups (identificados en audit 2026-04-29)
-- RC webhook: ahora valida que `app_user_id` exista en `profiles` antes de procesar (anti-spoof) ✅ aplicado.
-- CORS whitelist en `calendar-auth`, `public-api`, `notify-slack` (antes wildcard `*`) ✅ aplicado.
-- `sync-subscription` ahora acepta `pro_plus` (antes solo `premium`/`enterprise`) ✅ aplicado.
-- **Crítico aplicado**: `app/_layout.tsx` ahora reconcilia plan con RC solo si RC reporta tier MAYOR (antes podía borrar plan Stripe al leer RC `free`). ✅
-- Verificar en Supabase Dashboard que TODOS los edge functions tengan secrets requeridos antes de Production Build (especialmente `STORAGE_CLEANUP_SECRET`, `STRIPE_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_SECRET`, `RESEND_API_KEY` si quieres emails).
-- Hardening RPC `get_subscription_details` vs `sync_profile_plan` — distintos filtros de status (`past_due`, `expired`). Armonizar pre-launch si causa edge cases.
-
----
-
-## ✅ Fixes aplicados 2026-04-29 (commit pendiente)
-
-| Archivo | Cambio | Por qué |
-|---|---|---|
-| `app/_layout.tsx` | Reconcilia plan con RC solo si RC reporta tier mayor | Antes: si DB tenía `premium` (Stripe) y RC reportaba `free`, sobrescribía a `free` y borraba la suscripción del usuario en la app |
-| `supabase/functions/revenuecat-webhook/index.ts` | Verifica que `app_user_id` exista en `profiles` antes de procesar | Anti-spoof: aunque el Bearer ya bloquea, defense-in-depth contra UUIDs arbitrarios |
-| `supabase/functions/sync-subscription/index.ts` | Acepta `pro_plus` además de `premium`/`enterprise` | Antes rechazaba con 400, rompía sync de tier Pro+ |
-| `supabase/functions/calendar-auth/index.ts` | CORS whitelist (sythio.app) en vez de `*` | Calendar auth maneja OAuth tokens — no debe permitir CSRF desde dominios arbitrarios |
-| `supabase/functions/public-api/index.ts` | CORS whitelist + jsonResponse closure | Idem, pero por API keys de usuarios |
-| `supabase/functions/notify-slack/index.ts` | CORS whitelist | Idem |
-| `components/ModeResultView.tsx` | `React.memo` en componente de 1000+ líneas | Re-renderiza completo en cada cambio de prop padre, ahora skipea si props no cambian |
-| `components/SpeakerTranscript.tsx` | `React.memo` | Idem |
-
-### 📌 Notas históricas (referencia)
-- App `com.sythio.app` creada en ASC (Apple ID `6764143516`)
-- 4 productos `_v2` creados en ASC y "Ready to Submit" (RC los tiene importados manualmente)
-- Tax/Banking ASC: Active
-- Subscription Group: `Sythio`
-- RC Project: Sythio (proyecto + iOS app configurada)
-- Entitlements RC: `premium`, `pro_plus` (hardcoded en `lib/purchases.ts:63-64`)
-- Offerings RC: `default` (CURRENT, Premium) + `pro_plus` (Pro+)
-- API key RC iOS: `appl_YQBZEnATAggxJJLdlXjZDoiaYlC` (en `eas.json` 3 perfiles)
-- Webhook RC → `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/revenuecat-webhook` (Bearer token configurado, test event 200)
-- EAS credentials: Distribution Cert + Provisioning Profile + Push Key + ASC API Key OK
-
----
-
-## ⚠️ Recordatorios críticos
-
-### JWS de Apple expira **2026-10-27** (máx 6 meses)
+### JWS de Apple expira **2026-10-27** (max 6 meses)
 Antes del **2026-10-15** generar un JWS nuevo y reemplazar en Supabase → Auth → Providers → Apple → Secret Key. Si vence sin reemplazo, todos los logins con Apple se rompen en producción.
 
 ### Vercel auto-deploy roto
 Para deployar web: `cd web && vercel --prod`. NO sirve `git push` (la integración GitHub está desconectada).
 
-### Token RevenueCat webhook (ya generado)
+### Token RevenueCat webhook (en .env y RC dashboard)
 ```
 Bearer 807f2793ddd7ec0b2ab0b698a218ace512cfb040e38566623f05e4f199a369d4
 ```
-Este mismo token va en el header `Authorization` cuando configures el webhook en RevenueCat (paso 1.2.7 abajo).
+
+### Constraint en `subscriptions.provider`
+Solo acepta `'stripe'` o `'revenuecat'`. Cuentas manuales (como `apple-review@sythio.app`) deben usar `'stripe'` como provider.
 
 ---
 
-# 🔴 1.2 RevenueCat — solo iOS
-
-⏱️ **30-45 min**
-
-### Por qué
-Apple obliga a que pagos in-app pasen por App Store. RevenueCat abstrae App Store Connect y nos da una sola API + webhook hacia Supabase.
-
-### Prerequisitos (verificar antes de seguir)
-- [ ] Membresía Apple Developer activa ($99/año)
-- [ ] App `com.sythio.app` creada en App Store Connect
-  - Si no: https://appstoreconnect.apple.com → My Apps → "+" → New App. Nombre `Sythio`, Bundle ID `com.sythio.app`, SKU `sythio-001`, idioma primario.
-
-### Pasos
-
-**1. Crear cuenta RevenueCat**
-- https://www.revenuecat.com → Sign up (gratis hasta $10K/mes revenue)
-
-**2. Crear el proyecto**
-- New Project → nombre `Sythio`
-- Solo iOS por ahora (Android se añade después): Bundle ID `com.sythio.app`
-
-**3. Conectar con App Store Connect**
-- Necesitas **App Store Connect API Key**:
-  - https://appstoreconnect.apple.com → Users and Access → Keys → App Store Connect API → Generate
-  - Anota Issuer ID, Key ID; descarga la `.p8` (solo se descarga UNA VEZ)
-- En RevenueCat → Project Settings → Apps → iOS app → pega Issuer ID, Key ID, contenido del `.p8`
-
-**4. Crear los 4 productos en App Store Connect**
-
-ASC → tu app → Monetization → In-App Purchases → "+":
-
-| Product ID | Tipo | Precio | Grupo |
-|---|---|---|---|
-| `sythio_premium_monthly` | Auto-Renewable Subscription | $14.99/mes | `Sythio` |
-| `sythio_premium_yearly` | Auto-Renewable | $149.99/año | `Sythio` |
-| `sythio_enterprise_monthly` | Auto-Renewable | $29.99/mes | `Sythio` |
-| `sythio_enterprise_yearly` | Auto-Renewable | $299.99/año | `Sythio` |
-
-⚠️ Los **Product IDs deben ser exactos** — `lib/pricing.ts` ya los espera así.
-
-Para cada uno: llena nombre/descripción en español, sube el screenshot de review (puede ser el paywall de la app).
-
-**5. Configurar Entitlements en RevenueCat**
-
-RevenueCat → Project → Entitlements → "+":
-- `premium` → adjunta `sythio_premium_monthly` + `sythio_premium_yearly`
-- `enterprise` → adjunta `sythio_enterprise_monthly` + `sythio_enterprise_yearly`
-
-⚠️ Identificadores `premium` y `enterprise` son los que `lib/pricing.ts` espera (campo `revenueCatEntitlement`). No los cambies.
-
-**6. Configurar Offerings**
-
-RevenueCat → Offerings → "+" → `default`:
-- Package `monthly` → `sythio_premium_monthly`
-- Package `annual` → `sythio_premium_yearly`
-
-(Para Enterprise, crear offering aparte si quieres paywall específico.)
-
-**7. Configurar el webhook**
-
-RevenueCat → Project → Integrations → Webhooks → Add:
-- **URL**: `https://oewjbeqwihhzuvbsfctf.supabase.co/functions/v1/revenuecat-webhook`
-- **Authorization header**: `Bearer 807f2793ddd7ec0b2ab0b698a218ace512cfb040e38566623f05e4f199a369d4`
-- Send a test event → debería devolver 200
-
-**8. Copiar API key iOS al `.env`**
-
-RevenueCat → Project Settings → API keys → copia la iOS key (formato `appl_...`).
-
-Pega en `.env`:
-```
-EXPO_PUBLIC_REVENUECAT_API_KEY_IOS=appl_xxxxxxxxxxxx
-```
-
-(Esta SÍ va al cliente — es public key, no secreto.)
-
-✅ **Verificación final**: en RevenueCat → Charts deberías ver `$0` revenue. Confirma que la cuenta existe y el proyecto está activo.
-
----
-
-# 🔴 3.1 EAS Build setup
-
-⏱️ **20 min**
-
-### Por qué
-Expo Go no soporta `expo-apple-authentication` ni `react-native-purchases`. Necesitamos un dev build para probar en simulador/dispositivo, y un production build para subir a App Store.
-
-### Pasos
-
-**1. Instalar EAS CLI**
-```bash
-npm install -g eas-cli
-eas login
-```
-
-**2. Linkar proyecto**
-```bash
-eas init
-```
-Asigna `projectId` (se guarda en `app.json` automáticamente). El proyecto ya tiene uno: `a7176742-154f-4c45-8200-8c2f6bb2dccc`.
-
-**3. Verificar `eas.json`**
-
-Si no existe en raíz:
-```json
-{
-  "cli": { "version": ">= 5.0.0" },
-  "build": {
-    "development": { "developmentClient": true, "distribution": "internal" },
-    "preview": { "distribution": "internal", "ios": { "simulator": false } },
-    "production": { "autoIncrement": true }
-  },
-  "submit": { "production": {} }
-}
-```
-
-**4. Configurar credenciales iOS**
-```bash
-eas credentials
-```
-Selecciona **iOS → production → "Set up new credentials"**. EAS te guía:
-- Apple Developer login
-- Distribution Certificate (lo crea automáticamente)
-- Provisioning Profile (idem)
-- Push notifications key
-
-Solo lo haces una vez.
-
-**5. Build de development (opcional pero recomendado)**
-```bash
-eas build --profile development --platform ios --simulator
-```
-Tarda ~15-20 min. Te da un `.app` para correr en simulador. Útil para probar Apple Sign In + RevenueCat sandbox antes del production build.
-
-✅ **Verificación**: corre el dev build en simulador, prueba grabar/transcribir, login con Apple, paywall.
-
----
-
-# 🔴 3.2 Production build → TestFlight
-
-⏱️ **30 min build + 24h review**
-
-### Pasos
-
-**1. Subir versión y build number en `app.json`**
-```json
-"version": "1.0.0",
-"ios": { "buildNumber": "1" }
-```
-(El `buildNumber` se incrementa con cada upload a TestFlight.)
-
-**2. Production build**
-```bash
-eas build --profile production --platform ios
-```
-Tarda ~20-30 min.
-
-**3. Submit a App Store Connect**
-```bash
-eas submit --profile production --platform ios
-```
-Pide tu Apple ID + app-specific password (créala en https://appleid.apple.com → Sign In and Security → App-Specific Passwords).
-
-**4. Configurar TestFlight**
-
-ASC → tu app → TestFlight:
-- Internal Testing → añade tu email + tu equipo
-- Test Information → describe qué probar
-
-**5. Review TestFlight (~24h, más rápido en internal)**
-
-Cuando llegue el email "Ready to Test", instala TestFlight en tu iPhone, abre Sythio y prueba:
-
-- [ ] Login con Apple
-- [ ] 2FA enrollment + verify + disable
-- [ ] Grabar audio 30s → procesa → ve resultado
-- [ ] Cambiar de modo en la nota
-- [ ] Exportar PDF y Excel
-- [ ] Compartir nota → link público abre en browser
-- [ ] Comprar Premium en **Sandbox** (ASC → Sandbox Testers → crea uno)
-- [ ] `profiles.plan` cambia a `premium` en Supabase tras la compra
-- [ ] Restaurar compra
-- [ ] Límite free (2 notas/día) bloquea la 3ª
-
-⚠️ **Sandbox tip**: cierra sesión de App Store en iPhone (Settings → App Store), entra con tu sandbox tester. Si entras con tu Apple ID real, te cobra de verdad.
-
----
-
-# 🔴 3.3 Submit a App Store
-
-⏱️ **1-2 días review Apple**
-
-### Pasos
-
-**1. Llenar metadata en App Store Connect**
-
-App Store → tu app → App Store tab:
-- App Name: `Sythio`
-- Subtitle: `Voz a resultados con IA` (max 30 chars)
-- Privacy Policy URL: `https://sythio.app/privacy-policy` ✅
-- Support URL: `https://sythio.app`
-- Category: Productivity
-- Age Rating: 4+
-
-**2. Capturas de pantalla** (mínimo iPhone 6.7" — 1290 × 2796 px)
-
-5 capturas recomendadas:
-1. Pantalla de grabación (botón violet glow)
-2. Procesamiento (4 fases)
-3. Resultado de un modo (Reporte ejecutivo)
-4. Selector de modos (3 hero + bottom sheet)
-5. Paywall
-
-**3. App Privacy** (Privacy Nutrition Label)
-
-ASC → App Privacy. Llena:
-- Audio Recordings → Used for App Functionality (Linked to User, NO tracking)
-- Email Address → Used for App Functionality (Linked to User)
-- User ID → Used for App Functionality
-- Usage Data → Used for Analytics (Linked to User)
-
-**4. Submit for Review**
-
-Click "Add for Review" → "Submit for Review". Apple revisa en 24-48h.
-
-**Razones comunes de rechazo:**
-- "Sign In with Apple" no implementado correctamente → ya está OK ✅
-- Privacy Policy no carga → ya carga 200 ✅
-- Crashes → prueba EXHAUSTIVO en TestFlight antes
-
-✅ **Cuando aprueben**: "Release this version" → app live en App Store. 🚀
-
----
-
-# 📋 Apéndices
-
-## Comandos útiles
+## 📋 Comandos útiles
 
 ```bash
 # Backend (Supabase)
-supabase secrets list
-supabase secrets set KEY=value
-supabase functions deploy <name>
-supabase db push
+npx supabase secrets list
+npx supabase secrets set KEY=value
+npx supabase functions deploy <name>
+npx supabase db push
 
 # Mobile (EAS)
-eas build --profile development --platform ios --simulator
 eas build --profile production --platform ios
 eas submit --profile production --platform ios
+eas build:list --platform ios --limit 5
 eas credentials
 
 # Web (Vercel)
@@ -440,7 +201,12 @@ cd web && vercel --prod
 
 # Type check
 npx tsc --noEmit
+
+# Build mobile to TestFlight desde cero (si necesitas re-build después de cambios)
+eas build --profile production --platform ios && eas submit --profile production --platform ios
 ```
+
+---
 
 ## Troubleshooting
 
@@ -451,23 +217,15 @@ Service ID en Supabase no coincide con el de Apple Developer. Debe ser exactamen
 Stripe Dashboard → Webhooks → tu endpoint → Logs. Si 400 "signature failed" → `STRIPE_WEBHOOK_SECRET` mal copiado.
 
 ### "TestFlight build crashea al abrir"
-Falta plugin en `app.json`. Verifica que `expo-apple-authentication` está en `plugins`.
+Verifica plugins en `app.json`. `expo-apple-authentication`, `expo-av`, `expo-notifications`, `expo-image-picker`, `expo-splash-screen` deben estar.
 
 ### "Usuario pagó pero `profiles.plan` sigue en free"
 1. Webhook llegó? (Stripe/RevenueCat dashboard → Logs)
 2. ¿`provider` column existe? (sí, ya está en migración 20260427000003)
-3. Logs del webhook: ¿el `userId` del `client_reference_id` matches `auth.users.id`?
+3. Logs del webhook: ¿el `userId` matches `auth.users.id`?
 
-## Calendario sugerido (4-6 hr/día)
+### "EAS build falla con env var validation"
+EAS no acepta env vars vacías. Si añades una clave, debe tener valor o quitarla del JSON.
 
-| Día | Tarea |
-|---|---|
-| 1 | 1.2 RevenueCat (productos en ASC + RevenueCat config) |
-| 1 | 3.1 EAS Build setup + dev build iOS |
-| 2 | Testing dev build (Apple, 2FA, RevenueCat sandbox) |
-| 2 | 3.2 Production build → submit TestFlight |
-| 3-4 | Esperar review TestFlight + bug fixes |
-| 5 | Testing exhaustivo TestFlight |
-| 6 | 3.3 Submit App Store |
-| 7-9 | Esperar review Apple |
-| 10 | 🚀 Release |
+### "submit a ASC falla"
+Probablemente API key expirada o cambio en App Store Connect. Re-correr `eas credentials` para regenerar.
