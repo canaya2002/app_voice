@@ -37,7 +37,8 @@ const MAX_DURATION_SEC: Record<string, number> = {
   enterprise: 7200,
 };
 const IP_RATE_LIMIT = 20;
-const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
+const IP_RATE_WINDOW_SECONDS = 3600; // 1 hour
+const ENDPOINT_NAME = "process-audio";
 
 // ── Max tokens per mode (tuned for Haiku output) ──────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
@@ -54,33 +55,28 @@ const MODE_MAX_TOKENS: Record<string, number> = {
 
 const CHART_HINT = `\nIf the result contains countable categories (e.g. priority distribution, effort levels, types), include "charts":[{"type":"bar","title":"Chart title","data":[{"label":"Category","value":count,"color":"#hex"}]}] (max 2 charts). Colors: #EF4444=high/urgent, #F59E0B=medium/warning, #22C55E=low/success, #3B82F6=info. Omit "charts" if nothing quantifiable.`;
 
-// In-memory IP rate limiter (resets on cold start — acceptable for edge functions)
-const ipHits = new Map<string, { count: number; resetAt: number }>();
-
-function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
-  const now = Date.now();
-  const entry = ipHits.get(ip);
-
-  if (!entry || now >= entry.resetAt) {
-    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+// Distributed IP rate limiter via DB. Falls open on RPC error so transient
+// DB blips don't block legit users.
+async function checkIpRateLimit(
+  admin: ReturnType<typeof createClient>,
+  ip: string,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  try {
+    const { data, error } = await admin.rpc("check_ip_rate_limit", {
+      p_ip: ip,
+      p_endpoint: ENDPOINT_NAME,
+      p_max_count: IP_RATE_LIMIT,
+      p_window_seconds: IP_RATE_WINDOW_SECONDS,
+    });
+    if (error || !data || data.length === 0) {
+      return { allowed: true, retryAfter: 0 };
+    }
+    const row = data[0] as { allowed: boolean; retry_after: number };
+    return { allowed: row.allowed, retryAfter: row.retry_after ?? 0 };
+  } catch {
     return { allowed: true, retryAfter: 0 };
   }
-
-  entry.count++;
-  if (entry.count > IP_RATE_LIMIT) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return { allowed: false, retryAfter };
-  }
-
-  return { allowed: true, retryAfter: 0 };
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of ipHits) {
-    if (now >= entry.resetAt) ipHits.delete(ip);
-  }
-}, 5 * 60_000);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -172,11 +168,13 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Método no permitido" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
   // ── IP rate limit (layer 1 — before any DB work) ──
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || req.headers.get("cf-connecting-ip")
     || "unknown";
-  const ipCheck = checkIpRateLimit(clientIp);
+  const ipCheck = await checkIpRateLimit(admin, clientIp);
   if (!ipCheck.allowed) {
     return rateLimitResponse("Demasiadas solicitudes. Espera un momento.", "per_hour", ipCheck.retryAfter, corsHeaders);
   }
@@ -211,8 +209,6 @@ serve(async (req: Request) => {
   if (!audio_path.startsWith(`${user.id}/`)) {
     return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
-
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // ── Fetch profile + rate limits ──
   const { data: profile } = await admin.from("profiles").select("plan, daily_count, daily_audio_minutes, last_reset_date, custom_vocabulary").eq("id", user.id).single();

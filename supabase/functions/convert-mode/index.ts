@@ -23,7 +23,8 @@ const DAILY_CONVERT_LIMITS: Record<string, number> = {
   enterprise: Number.POSITIVE_INFINITY,
 };
 const IP_RATE_LIMIT = 20;
-const IP_RATE_WINDOW_MS = 3_600_000; // 1 hour
+const IP_RATE_WINDOW_SECONDS = 3600; // 1 hour
+const ENDPOINT_NAME = "convert-mode";
 
 // ── Max tokens per mode ────────────────────────────────────────────────────
 const MODE_MAX_TOKENS: Record<string, number> = {
@@ -33,28 +34,28 @@ const MODE_MAX_TOKENS: Record<string, number> = {
 
 const CHART_HINT = `\nIf the result contains countable categories (e.g. priority distribution, effort levels, types), include "charts":[{"type":"bar","title":"Chart title","data":[{"label":"Category","value":count,"color":"#hex"}]}] (max 2 charts). Colors: #EF4444=high/urgent, #F59E0B=medium/warning, #22C55E=low/success, #3B82F6=info. Omit "charts" if nothing quantifiable.`;
 
-const ipHits = new Map<string, { count: number; resetAt: number }>();
-
-function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
-  const now = Date.now();
-  const entry = ipHits.get(ip);
-  if (!entry || now >= entry.resetAt) {
-    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+// Distributed IP rate limiter via DB (atomic UPSERT in check_ip_rate_limit RPC).
+// Falls open if the RPC errors so a transient DB blip doesn't block legit users.
+async function checkIpRateLimit(
+  admin: ReturnType<typeof createClient>,
+  ip: string,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  try {
+    const { data, error } = await admin.rpc("check_ip_rate_limit", {
+      p_ip: ip,
+      p_endpoint: ENDPOINT_NAME,
+      p_max_count: IP_RATE_LIMIT,
+      p_window_seconds: IP_RATE_WINDOW_SECONDS,
+    });
+    if (error || !data || data.length === 0) {
+      return { allowed: true, retryAfter: 0 };
+    }
+    const row = data[0] as { allowed: boolean; retry_after: number };
+    return { allowed: row.allowed, retryAfter: row.retry_after ?? 0 };
+  } catch {
     return { allowed: true, retryAfter: 0 };
   }
-  entry.count++;
-  if (entry.count > IP_RATE_LIMIT) {
-    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
-  }
-  return { allowed: true, retryAfter: 0 };
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of ipHits) {
-    if (now >= entry.resetAt) ipHits.delete(ip);
-  }
-}, 5 * 60_000);
 
 function rateLimitResponse(message: string, limitType: "daily" | "per_hour", retryAfter: number | null, cors: Record<string, string>): Response {
   return new Response(
@@ -112,8 +113,10 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Método no permitido" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown";
-  const ipCheck = checkIpRateLimit(clientIp);
+  const ipCheck = await checkIpRateLimit(admin, clientIp);
   if (!ipCheck.allowed) return rateLimitResponse("Demasiadas solicitudes.", "per_hour", ipCheck.retryAfter, corsHeaders);
 
   const authHeader = req.headers.get("Authorization");
@@ -130,8 +133,6 @@ serve(async (req: Request) => {
   const target_mode = body.target_mode as string | undefined;
   const tone = body.tone as string | undefined;
   if (!note_id || !target_mode) return new Response(JSON.stringify({ error: "Parámetros inválidos" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   const { data: note } = await admin.from("notes").select("*").eq("id", note_id).single();
   if (!note || note.user_id !== user.id) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });

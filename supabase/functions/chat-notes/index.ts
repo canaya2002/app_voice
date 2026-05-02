@@ -19,31 +19,31 @@ const DAILY_CHAT_LIMITS: Record<string, number> = {
   enterprise: Number.POSITIVE_INFINITY,
 };
 const IP_RATE_LIMIT = 30;               // questions per hour per IP
-const IP_RATE_WINDOW_MS = 3_600_000;
+const IP_RATE_WINDOW_SECONDS = 3600;
+const ENDPOINT_NAME = "chat-notes";
 
-// In-memory IP rate limiter (resets on cold start — acceptable for chat).
-const ipHits = new Map<string, { count: number; resetAt: number }>();
-
-function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
-  const now = Date.now();
-  const entry = ipHits.get(ip);
-  if (!entry || now >= entry.resetAt) {
-    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+// Distributed IP rate limiter via DB. Falls open on RPC error so transient
+// DB blips don't block legit users.
+async function checkIpRateLimit(
+  admin: ReturnType<typeof createClient>,
+  ip: string,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  try {
+    const { data, error } = await admin.rpc("check_ip_rate_limit", {
+      p_ip: ip,
+      p_endpoint: ENDPOINT_NAME,
+      p_max_count: IP_RATE_LIMIT,
+      p_window_seconds: IP_RATE_WINDOW_SECONDS,
+    });
+    if (error || !data || data.length === 0) {
+      return { allowed: true, retryAfter: 0 };
+    }
+    const row = data[0] as { allowed: boolean; retry_after: number };
+    return { allowed: row.allowed, retryAfter: row.retry_after ?? 0 };
+  } catch {
     return { allowed: true, retryAfter: 0 };
   }
-  entry.count++;
-  if (entry.count > IP_RATE_LIMIT) {
-    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
-  }
-  return { allowed: true, retryAfter: 0 };
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of ipHits) {
-    if (now >= entry.resetAt) ipHits.delete(ip);
-  }
-}, 5 * 60_000);
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
@@ -67,11 +67,13 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── IP rate limit (layer 1) ──
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  // ── IP rate limit (layer 1, distributed via DB) ──
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || req.headers.get("cf-connecting-ip")
     || "unknown";
-  const ipCheck = checkIpRateLimit(clientIp);
+  const ipCheck = await checkIpRateLimit(admin, clientIp);
   if (!ipCheck.allowed) {
     return new Response(
       JSON.stringify({ error: "rate_limit_exceeded", message: "Demasiadas preguntas. Espera un momento.", retry_after: ipCheck.retryAfter }),
@@ -108,8 +110,6 @@ serve(async (req: Request) => {
   const noteIds = Array.isArray(body.note_ids) ? body.note_ids as string[] : [];
   const folderIds = Array.isArray(body.folder_ids) ? body.folder_ids as string[] : [];
   const channelIds = Array.isArray(body.channel_ids) ? body.channel_ids as string[] : [];
-
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // ── Plan gate + daily chat limit (atomic increment via RPC — race-safe) ──
   const { data: profile } = await admin

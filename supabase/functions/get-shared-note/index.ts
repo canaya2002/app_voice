@@ -5,29 +5,32 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// IP rate limit — prevents brute-forcing share tokens
+// IP rate limit — prevents brute-forcing share tokens.
+// Distributed via DB so cold starts and edge region rotation don't reset state.
 const IP_RATE_LIMIT = 30;          // requests per hour per IP
-const IP_RATE_WINDOW_MS = 3_600_000;
-const ipHits = new Map<string, { count: number; resetAt: number }>();
+const IP_RATE_WINDOW_SECONDS = 3600;
+const ENDPOINT_NAME = "get-shared-note";
 
-function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
-  const now = Date.now();
-  const entry = ipHits.get(ip);
-  if (!entry || now >= entry.resetAt) {
-    ipHits.set(ip, { count: 1, resetAt: now + IP_RATE_WINDOW_MS });
+async function checkIpRateLimit(
+  admin: ReturnType<typeof createClient>,
+  ip: string,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  try {
+    const { data, error } = await admin.rpc("check_ip_rate_limit", {
+      p_ip: ip,
+      p_endpoint: ENDPOINT_NAME,
+      p_max_count: IP_RATE_LIMIT,
+      p_window_seconds: IP_RATE_WINDOW_SECONDS,
+    });
+    if (error || !data || data.length === 0) {
+      return { allowed: true, retryAfter: 0 };
+    }
+    const row = data[0] as { allowed: boolean; retry_after: number };
+    return { allowed: row.allowed, retryAfter: row.retry_after ?? 0 };
+  } catch {
     return { allowed: true, retryAfter: 0 };
   }
-  entry.count++;
-  if (entry.count > IP_RATE_LIMIT) {
-    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
-  }
-  return { allowed: true, retryAfter: 0 };
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of ipHits) if (now >= entry.resetAt) ipHits.delete(ip);
-}, 5 * 60_000);
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
@@ -53,10 +56,12 @@ serve(async (req: Request) => {
     });
   }
 
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
   // IP rate limit (anti brute-force on share tokens)
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || req.headers.get("cf-connecting-ip") || "unknown";
-  const ipCheck = checkIpRateLimit(clientIp);
+  const ipCheck = await checkIpRateLimit(admin, clientIp);
   if (!ipCheck.allowed) {
     return new Response(
       JSON.stringify({ error: "rate_limit_exceeded", retry_after: ipCheck.retryAfter }),
@@ -77,8 +82,6 @@ serve(async (req: Request) => {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // Fetch note by share token
   const { data: note, error } = await admin
