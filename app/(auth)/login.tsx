@@ -247,8 +247,10 @@ export default function LoginScreen() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Apple — native button on iOS, OAuth elsewhere. Apple guidelines require it first. */}
-            {Platform.OS === 'ios' ? (
+            {/* Apple — native button on iOS only. Apple's "Sign in with Apple" guideline
+                applies to iOS apps; on Android we offer Google instead (cleaner UX, no
+                cross-ecosystem OAuth bouncing). Cross-device users can use email/password. */}
+            {Platform.OS === 'ios' && (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                 buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
@@ -261,22 +263,6 @@ export default function LoginScreen() {
                   }
                 }}
               />
-            ) : (
-              <TouchableOpacity
-                style={styles.socialBtn}
-                activeOpacity={0.7}
-                onPress={async () => {
-                  const redirectUrl = Linking.createURL('/(tabs)');
-                  const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'apple',
-                    options: { redirectTo: redirectUrl },
-                  });
-                  if (error) showToast('Error con Apple: ' + error.message, 'error');
-                }}
-              >
-                <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
-                <Text style={styles.socialBtnText}>Continuar con Apple</Text>
-              </TouchableOpacity>
             )}
 
             <TouchableOpacity

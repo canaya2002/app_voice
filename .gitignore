@@ -38,6 +38,11 @@ yarn-error.*
 # secrets-loaded scripts (contienen credenciales live)
 scripts/setup-supabase-secrets.sh
 
+# Google Play service account JSON (used by `eas submit --platform android`)
+play-store-service-account.json
+google-play-service-account*.json
+*-play-service-account.json
+
 # typescript
 *.tsbuildinfo
 

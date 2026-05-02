@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -237,21 +238,23 @@ export default function RegisterScreen() {
                 <Ionicons name="logo-google" size={20} color="#DB4437" />
                 <Text style={styles.socialBtnText}>Google</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.socialBtn}
-                activeOpacity={0.7}
-                onPress={async () => {
-                  const redirectUrl = Linking.createURL('/(tabs)');
-                  const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'apple',
-                    options: { redirectTo: redirectUrl },
-                  });
-                  if (error) showToast('Error con Apple: ' + error.message, 'error');
-                }}
-              >
-                <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
-                <Text style={styles.socialBtnText}>Apple</Text>
-              </TouchableOpacity>
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity
+                  style={styles.socialBtn}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    const redirectUrl = Linking.createURL('/(tabs)');
+                    const { error } = await supabase.auth.signInWithOAuth({
+                      provider: 'apple',
+                      options: { redirectTo: redirectUrl },
+                    });
+                    if (error) showToast('Error con Apple: ' + error.message, 'error');
+                  }}
+                >
+                  <Ionicons name="logo-apple" size={20} color={COLORS.textPrimary} />
+                  <Text style={styles.socialBtnText}>Apple</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </Animated.View>
 
