@@ -100,6 +100,8 @@ function ContextPicker({
       <TouchableOpacity
         style={styles.contextBar}
         onPress={() => { hapticSelection(); setShowPicker(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={`Cambiar contexto. Actualmente: ${context.label}`}
       >
         <Ionicons name="funnel-outline" size={14} color={COLORS.primaryLight} />
         <Text style={styles.contextLabel} numberOfLines={1}>
@@ -114,7 +116,7 @@ function ContextPicker({
           <View style={styles.pickerSheet}>
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Seleccionar contexto</Text>
-              <TouchableOpacity onPress={() => setShowPicker(false)}>
+              <TouchableOpacity onPress={() => setShowPicker(false)} accessibilityLabel="Cerrar selector de contexto">
                 <Ionicons name="close" size={22} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -126,6 +128,9 @@ function ContextPicker({
                   key={opt.value}
                   onPress={() => { hapticSelection(); setPickerMode(opt.value); }}
                   style={[styles.pickerTab, pickerMode === opt.value && styles.pickerTabActive]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: pickerMode === opt.value }}
+                  accessibilityLabel={opt.label}
                 >
                   <Ionicons
                     name={opt.icon}
@@ -157,6 +162,9 @@ function ContextPicker({
                         key={note.id}
                         style={[styles.pickerItem, sel && styles.pickerItemSel]}
                         onPress={() => setSelectedNoteIds(toggleId(selectedNoteIds, note.id))}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: sel }}
+                        accessibilityLabel={`Nota: ${note.title}`}
                       >
                         <View style={[styles.pickerCheck, sel && styles.pickerCheckSel]}>
                           {sel && <Ionicons name="checkmark" size={12} color="#FFF" />}
@@ -185,6 +193,9 @@ function ContextPicker({
                         key={folder.id}
                         style={[styles.pickerItem, sel && styles.pickerItemSel]}
                         onPress={() => setSelectedFolderIds(toggleId(selectedFolderIds, folder.id))}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: sel }}
+                        accessibilityLabel={`Carpeta: ${folder.name}`}
                       >
                         <View style={[styles.pickerCheck, sel && styles.pickerCheckSel]}>
                           {sel && <Ionicons name="checkmark" size={12} color="#FFF" />}
@@ -209,6 +220,9 @@ function ContextPicker({
                         key={channel.id}
                         style={[styles.pickerItem, sel && styles.pickerItemSel]}
                         onPress={() => setSelectedChannelIds(toggleId(selectedChannelIds, channel.id))}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: sel }}
+                        accessibilityLabel={`Canal: ${channel.name}`}
                       >
                         <View style={[styles.pickerCheck, sel && styles.pickerCheckSel]}>
                           {sel && <Ionicons name="checkmark" size={12} color="#FFF" />}
@@ -341,7 +355,7 @@ export default function AIChatModal({ visible, onClose }: AIChatModalProps) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <AnimatedPressable onPress={handleClose} style={styles.closeBtn}>
+          <AnimatedPressable onPress={handleClose} style={styles.closeBtn} accessibilityLabel="Cerrar chat con IA">
             <Ionicons name="chevron-down" size={24} color={COLORS.textSecondary} />
           </AnimatedPressable>
           <View style={styles.headerCenter}>
