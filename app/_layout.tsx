@@ -115,11 +115,18 @@ export default function RootLayout() {
       registerForPushNotifications(currentUserId).catch(() => {});
     }
 
-    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
-      const done = val === "true";
-      if (__DEV__) console.log("[layout] onboarding flag:", done);
-      setOnboardingDone(done);
-    });
+    AsyncStorage.getItem(ONBOARDING_KEY)
+      .then((val) => {
+        const done = val === "true";
+        if (__DEV__) console.log("[layout] onboarding flag:", done);
+        setOnboardingDone(done);
+      })
+      .catch(() => {
+        // AsyncStorage read failed (rare — disk corruption). Treat as
+        // onboarding-not-done so the user sees the welcome flow rather
+        // than getting stuck on splash forever.
+        setOnboardingDone(false);
+      });
 
     return () => {
       unsubPurchases();

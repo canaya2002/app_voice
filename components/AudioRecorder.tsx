@@ -250,7 +250,7 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
       <View style={styles.container}>
         {/* Close button */}
         <Animated.View entering={FadeIn.delay(200)} style={styles.topBar}>
-          <AnimatedPressable onPress={onCancel} style={styles.closeBtn}>
+          <AnimatedPressable onPress={onCancel} style={styles.closeBtn} accessibilityLabel="Cancelar grabación">
             <Ionicons name="close" size={26} color={COLORS.textSecondary} />
           </AnimatedPressable>
         </Animated.View>
@@ -288,7 +288,7 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
     <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <AnimatedPressable onPress={handleCancel} style={styles.closeBtn}>
+        <AnimatedPressable onPress={handleCancel} style={styles.closeBtn} accessibilityLabel="Cancelar grabación">
           <Ionicons name="chevron-back" size={24} color={COLORS.textSecondary} />
         </AnimatedPressable>
       </View>

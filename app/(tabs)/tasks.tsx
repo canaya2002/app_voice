@@ -311,8 +311,11 @@ export default function TasksScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchItems();
-    setRefreshing(false);
+    try {
+      await fetchItems();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchItems]);
 
   const handleDelete = (item: ActionItem) => {

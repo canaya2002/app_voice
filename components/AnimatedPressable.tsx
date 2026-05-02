@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { type ViewStyle, type StyleProp } from 'react-native';
+import { type ViewStyle, type StyleProp, type AccessibilityRole, type AccessibilityState } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,6 +21,9 @@ interface AnimatedPressableProps {
   haptic?: boolean;
   scaleDown?: number;
   accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityState?: AccessibilityState;
+  accessibilityHint?: string;
 }
 
 export default function AnimatedPressable({
@@ -32,6 +35,9 @@ export default function AnimatedPressable({
   haptic = true,
   scaleDown = 0.97,
   accessibilityLabel,
+  accessibilityRole = 'button',
+  accessibilityState,
+  accessibilityHint,
 }: AnimatedPressableProps) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
@@ -75,8 +81,11 @@ export default function AnimatedPressable({
     <GestureDetector gesture={gesture}>
       <Animated.View
         style={[animStyle, style]}
+        accessible={!!accessibilityLabel}
         accessibilityLabel={accessibilityLabel}
-        accessibilityRole="button"
+        accessibilityRole={accessibilityRole}
+        accessibilityState={accessibilityState ?? (disabled ? { disabled: true } : undefined)}
+        accessibilityHint={accessibilityHint}
       >
         {children}
       </Animated.View>

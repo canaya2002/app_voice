@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -140,12 +140,17 @@ export default function MenuScreen() {
   const [mfaLoading, setMfaLoading] = useState(false);
 
   // Check MFA on mount
-  useState(() => {
-    supabase.auth.mfa.listFactors().then(({ data }) => {
-      const verified = data?.totp?.find((f) => f.status === 'verified');
-      if (verified) setMfaEnabled(true);
-    });
-  });
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.mfa.listFactors()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const verified = data?.totp?.find((f) => f.status === 'verified');
+        if (verified) setMfaEnabled(true);
+      })
+      .catch(() => { /* ignore — MFA check is non-critical for menu render */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleExportData = async () => {
     setExporting(true);

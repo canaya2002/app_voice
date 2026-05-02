@@ -83,7 +83,12 @@ export default function NoteDetailScreen() {
   }, [id, fetchNote, fetchModeResults, fetchFolders, subscribeToNote]);
 
   useEffect(() => {
-    if (currentNote?.audio_url) getSignedAudioUrl(currentNote.audio_url).then(setSignedUrl);
+    if (!currentNote?.audio_url) return;
+    let cancelled = false;
+    getSignedAudioUrl(currentNote.audio_url)
+      .then((url) => { if (!cancelled) setSignedUrl(url); })
+      .catch(() => { if (!cancelled) setSignedUrl(null); });
+    return () => { cancelled = true; };
   }, [currentNote?.audio_url]);
 
   useEffect(() => {

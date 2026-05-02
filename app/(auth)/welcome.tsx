@@ -167,7 +167,9 @@ export default function WelcomeScreen() {
   // Read language from onboarding and start greeting automatically
   useEffect(() => {
     if (langReady) return;
-    AsyncStorage.getItem('sythio_user_language').then((code) => {
+    AsyncStorage.getItem('sythio_user_language')
+      .catch(() => null)
+      .then((code) => {
       const resolvedLang = code && T[code] ? code : 'es';
       setLang(resolvedLang);
       setLangReady(true);

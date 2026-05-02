@@ -102,13 +102,22 @@ export default function HistoryScreen() {
   const [batchExporting, setBatchExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchNotes(), fetchFolders()]).then(() => setInitialLoad(false));
+    Promise.all([fetchNotes(), fetchFolders()])
+      .then(() => setInitialLoad(false))
+      .catch(() => setInitialLoad(false));
   }, [fetchNotes, fetchFolders]);
   useEffect(() => {
     if (user) { const unsub = subscribeToNotes(user.id); return unsub; }
   }, [user, subscribeToNotes]);
 
-  const onRefresh = useCallback(async () => { setRefreshing(true); await Promise.all([fetchNotes(), fetchFolders()]); setRefreshing(false); }, [fetchNotes, fetchFolders]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchNotes(), fetchFolders()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchNotes, fetchFolders]);
 
   const handleDelete = useCallback((noteId: string) => {
     Alert.alert('Mover a papelera', 'Puedes restaurarla dentro de 30 días.', [

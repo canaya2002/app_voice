@@ -49,7 +49,9 @@ function CompactChip({
         styles.chip,
         isSelected ? styles.chipSelected : styles.chipDefault,
       ]}
+      accessibilityRole="button"
       accessibilityLabel={`Plantilla: ${label}`}
+      accessibilityState={{ selected: isSelected }}
     >
       <Ionicons
         name={icon as keyof typeof Ionicons.glyphMap}
@@ -98,7 +100,8 @@ function GridCard({
         onPress(id);
       }}
       activeOpacity={0.7}
-      accessibilityLabel={`Plantilla: ${label}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Plantilla: ${label}. ${description}`}
       accessibilityState={{ selected: isSelected }}
     >
       {isSelected && (

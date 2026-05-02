@@ -96,9 +96,20 @@ export default function ModeSelector({
             activeOpacity={0.7}
             onPress={handlePress}
             disabled={isLoading}
-            accessibilityLabel={config.label}
+            accessibilityLabel={
+              isLocked ? `${config.label}, requiere Premium`
+                : isCurrent ? `${config.label}, modo actual`
+                : isGenerated ? `${config.label}, ya generado`
+                : `${config.label}, generar`
+            }
             accessibilityRole="button"
-            accessibilityState={{ selected: isCurrent }}
+            accessibilityState={{ selected: isCurrent, disabled: isLoading }}
+            accessibilityHint={
+              isLocked ? 'Toca para ver opciones de Premium'
+                : isCurrent ? undefined
+                : isGenerated ? 'Toca para ver este modo'
+                : 'Toca para generar este modo'
+            }
           >
             {isLoading ? (
               <ActivityIndicator
